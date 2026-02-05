@@ -165,6 +165,121 @@ class ShutterscoreAPITester:
             expected_response_keys=["count"]
         )
 
+    def test_admin_waitlist_stats(self):
+        """Test admin waitlist stats endpoint"""
+        return self.run_test(
+            "Admin Waitlist Stats",
+            "GET",
+            "admin/waitlist/stats",
+            200,
+            expected_response_keys=["total_signups", "today_signups", "this_week_signups"]
+        )
+
+    def test_admin_waitlist_entries(self):
+        """Test admin waitlist entries endpoint"""
+        success, response = self.run_test(
+            "Admin Waitlist Entries",
+            "GET",
+            "admin/waitlist?page=1&page_size=10",
+            200,
+            expected_response_keys=["entries", "total", "page", "page_size", "total_pages"]
+        )
+        
+        if success:
+            print(f"   Total entries: {response.get('total', 0)}")
+            print(f"   Entries on page: {len(response.get('entries', []))}")
+        
+        return success
+
+    def test_admin_search_entries(self):
+        """Test admin search functionality"""
+        return self.run_test(
+            "Admin Search Entries",
+            "GET",
+            "admin/waitlist?search=test&page=1&page_size=10",
+            200,
+            expected_response_keys=["entries", "total", "page", "page_size", "total_pages"]
+        )
+
+    def test_admin_export_csv(self):
+        """Test admin CSV export"""
+        url = f"{self.api_url}/admin/waitlist/export"
+        headers = {'Content-Type': 'application/json'}
+        
+        self.tests_run += 1
+        print(f"\n🔍 Testing Admin CSV Export...")
+        print(f"   URL: {url}")
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            success = response.status_code == 200
+            
+            if success:
+                self.tests_passed += 1
+                print(f"✅ Passed - Status: {response.status_code}")
+                
+                # Check if it's CSV format
+                content_type = response.headers.get('content-type', '')
+                if 'csv' in content_type.lower():
+                    print("   ✓ Correct CSV content type")
+                
+                csv_content = response.text
+                lines = csv_content.split('\n')
+                print(f"   CSV lines: {len(lines)}")
+                if lines and len(lines) > 0:
+                    print(f"   CSV header: {lines[0]}")
+                
+            else:
+                print(f"❌ Failed - Expected 200, got {response.status_code}")
+            
+            return success
+            
+        except Exception as e:
+            print(f"❌ Failed - Error: {str(e)}")
+            return False
+
+    def test_admin_delete_entry(self):
+        """Test admin delete functionality"""
+        # First create a test entry to delete
+        test_email = f"delete_test_{datetime.now().strftime('%H%M%S')}@example.com"
+        success, response = self.run_test(
+            "Create Entry for Delete Test",
+            "POST",
+            "waitlist",
+            200,
+            data={"email": test_email},
+            expected_response_keys=["success", "entry"]
+        )
+        
+        if not success or not response.get('entry'):
+            print("   ⚠️  Could not create test entry for delete test")
+            return False
+        
+        entry_id = response['entry']['id']
+        print(f"   Created test entry ID: {entry_id}")
+        
+        # Now delete the entry
+        success, delete_response = self.run_test(
+            "Admin Delete Entry",
+            "DELETE",
+            f"admin/waitlist/{entry_id}",
+            200,
+            expected_response_keys=["success", "message"]
+        )
+        
+        if success:
+            print("   ✓ Entry deleted successfully")
+        
+        # Test deleting non-existent entry
+        success_404, _ = self.run_test(
+            "Delete Non-existent Entry",
+            "DELETE",
+            "admin/waitlist/non-existent-id",
+            404
+        )
+        
+        return success and success_404
+
 def main():
     print("🚀 Starting Shutterscore API Tests...")
     print("=" * 50)
