@@ -155,6 +155,8 @@ const FeatureCard = ({ feature, index }) => {
 export default function LandingPage() {
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [hasJoinedWaitlist, setHasJoinedWaitlist] = useState(false);
   const featuresRef = useRef(null);
 
   const scrollToFeatures = () => {
