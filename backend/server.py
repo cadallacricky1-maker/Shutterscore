@@ -1,12 +1,13 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import re
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
 
@@ -28,7 +29,7 @@ api_router = APIRouter(prefix="/api")
 
 # Define Models
 class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
+    model_config = ConfigDict(extra="ignore")
     
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     client_name: str
@@ -37,7 +38,33 @@ class StatusCheck(BaseModel):
 class StatusCheckCreate(BaseModel):
     client_name: str
 
-# Add your routes to the router instead of directly to app
+
+# Waitlist Models
+class WaitlistEntry(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    email: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class WaitlistCreate(BaseModel):
+    email: str
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, v):
+            raise ValueError('Invalid email format')
+        return v.lower().strip()
+
+class WaitlistResponse(BaseModel):
+    success: bool
+    message: str
+    entry: Optional[WaitlistEntry] = None
+
+
+# Status Routes
 @api_router.get("/")
 async def root():
     return {"message": "Hello World"}
@@ -47,7 +74,6 @@ async def create_status_check(input: StatusCheckCreate):
     status_dict = input.model_dump()
     status_obj = StatusCheck(**status_dict)
     
-    # Convert to dict and serialize datetime to ISO string for MongoDB
     doc = status_obj.model_dump()
     doc['timestamp'] = doc['timestamp'].isoformat()
     
@@ -56,15 +82,49 @@ async def create_status_check(input: StatusCheckCreate):
 
 @api_router.get("/status", response_model=List[StatusCheck])
 async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
     status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
     
-    # Convert ISO string timestamps back to datetime objects
     for check in status_checks:
         if isinstance(check['timestamp'], str):
             check['timestamp'] = datetime.fromisoformat(check['timestamp'])
     
     return status_checks
+
+
+# Waitlist Routes
+@api_router.post("/waitlist", response_model=WaitlistResponse)
+async def join_waitlist(input: WaitlistCreate):
+    # Check if email already exists
+    existing = await db.waitlist.find_one({"email": input.email}, {"_id": 0})
+    if existing:
+        return WaitlistResponse(
+            success=True,
+            message="You're already on the waitlist! We'll notify you soon.",
+            entry=WaitlistEntry(**existing) if isinstance(existing.get('created_at'), datetime) else WaitlistEntry(
+                id=existing['id'],
+                email=existing['email'],
+                created_at=datetime.fromisoformat(existing['created_at']) if isinstance(existing['created_at'], str) else existing['created_at']
+            )
+        )
+    
+    # Create new entry
+    entry = WaitlistEntry(email=input.email)
+    doc = entry.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    
+    await db.waitlist.insert_one(doc)
+    
+    return WaitlistResponse(
+        success=True,
+        message="Welcome to the waitlist! We'll be in touch soon.",
+        entry=entry
+    )
+
+@api_router.get("/waitlist/count")
+async def get_waitlist_count():
+    count = await db.waitlist.count_documents({})
+    return {"count": count}
+
 
 # Include the router in the main app
 app.include_router(api_router)
