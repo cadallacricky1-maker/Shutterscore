@@ -192,6 +192,9 @@ export default function LandingPage() {
       if (response.data.success) {
         toast.success(response.data.message);
         setEmail("");
+        setHasJoinedWaitlist(true);
+        // Show share modal after successful signup
+        setTimeout(() => setShowShareModal(true), 500);
       }
     } catch (error) {
       if (error.response?.status === 422) {
