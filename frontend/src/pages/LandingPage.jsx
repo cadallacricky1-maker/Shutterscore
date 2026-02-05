@@ -184,7 +184,7 @@ export default function LandingPage() {
 
     setIsSubmitting(true);
     try {
-      const response = await axios.post(`${API}/waitlist`, { email: email.trim() });
+      const response = await axios.post(`${API}/waitlist`, { email: trimmedEmail });
       if (response.data.success) {
         toast.success(response.data.message);
         setEmail("");
