@@ -1,10 +1,13 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import re
+import io
+import csv
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional
@@ -62,6 +65,20 @@ class WaitlistResponse(BaseModel):
     success: bool
     message: str
     entry: Optional[WaitlistEntry] = None
+
+
+class WaitlistListResponse(BaseModel):
+    entries: List[WaitlistEntry]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class WaitlistStats(BaseModel):
+    total_signups: int
+    today_signups: int
+    this_week_signups: int
 
 
 # Status Routes
@@ -124,6 +141,101 @@ async def join_waitlist(input: WaitlistCreate):
 async def get_waitlist_count():
     count = await db.waitlist.count_documents({})
     return {"count": count}
+
+
+# Admin Routes
+@api_router.get("/admin/waitlist", response_model=WaitlistListResponse)
+async def get_waitlist_entries(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None
+):
+    # Build query
+    query = {}
+    if search:
+        query["email"] = {"$regex": search, "$options": "i"}
+    
+    # Get total count
+    total = await db.waitlist.count_documents(query)
+    total_pages = (total + page_size - 1) // page_size
+    
+    # Get paginated entries
+    skip = (page - 1) * page_size
+    cursor = db.waitlist.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(page_size)
+    entries_raw = await cursor.to_list(page_size)
+    
+    # Convert to WaitlistEntry objects
+    entries = []
+    for entry in entries_raw:
+        if isinstance(entry.get('created_at'), str):
+            entry['created_at'] = datetime.fromisoformat(entry['created_at'])
+        entries.append(WaitlistEntry(**entry))
+    
+    return WaitlistListResponse(
+        entries=entries,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
+
+
+@api_router.get("/admin/waitlist/stats", response_model=WaitlistStats)
+async def get_waitlist_stats():
+    # Total signups
+    total = await db.waitlist.count_documents({})
+    
+    # Today's signups
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_count = await db.waitlist.count_documents({
+        "created_at": {"$gte": today_start.isoformat()}
+    })
+    
+    # This week's signups (last 7 days)
+    from datetime import timedelta
+    week_start = today_start - timedelta(days=7)
+    week_count = await db.waitlist.count_documents({
+        "created_at": {"$gte": week_start.isoformat()}
+    })
+    
+    return WaitlistStats(
+        total_signups=total,
+        today_signups=today_count,
+        this_week_signups=week_count
+    )
+
+
+@api_router.get("/admin/waitlist/export")
+async def export_waitlist():
+    # Get all entries
+    entries = await db.waitlist.find({}, {"_id": 0}).sort("created_at", -1).to_list(10000)
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Email", "Signed Up At", "ID"])
+    
+    for entry in entries:
+        created_at = entry.get('created_at', '')
+        if isinstance(created_at, datetime):
+            created_at = created_at.isoformat()
+        writer.writerow([entry.get('email', ''), created_at, entry.get('id', '')])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=waitlist_export.csv"}
+    )
+
+
+@api_router.delete("/admin/waitlist/{entry_id}")
+async def delete_waitlist_entry(entry_id: str):
+    result = await db.waitlist.delete_one({"id": entry_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    return {"success": True, "message": "Entry deleted successfully"}
 
 
 # Include the router in the main app
