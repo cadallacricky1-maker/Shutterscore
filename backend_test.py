@@ -297,6 +297,13 @@ def main():
     tester.test_waitlist_invalid_email()
     tester.test_waitlist_count()
     
+    print("\n🔧 Testing Admin Panel Functionality...")
+    tester.test_admin_waitlist_stats()
+    tester.test_admin_waitlist_entries()
+    tester.test_admin_search_entries()
+    tester.test_admin_export_csv()
+    tester.test_admin_delete_entry()
+    
     # Print final results
     print("\n" + "=" * 50)
     print(f"📊 Final Results: {tester.tests_passed}/{tester.tests_run} tests passed")
