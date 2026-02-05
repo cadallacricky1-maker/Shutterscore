@@ -383,35 +383,48 @@ export default function LandingPage() {
               className="text-4xl sm:text-5xl md:text-6xl font-bold mb-6"
               style={{ fontFamily: "'Cormorant Garamond', serif" }}
             >
-              Ready to Launch?
+              {hasJoinedWaitlist ? "You're In!" : "Ready to Launch?"}
             </h2>
             <p className="text-lg text-gray-400 mb-12">
-              Join early — get lifetime discounts as a founding creator. Launching soon.
+              {hasJoinedWaitlist
+                ? "Thanks for joining! Share with friends to move up the waitlist."
+                : "Join early — get lifetime discounts as a founding creator. Launching soon."}
             </p>
 
-            <form
-              onSubmit={handleWaitlistSubmit}
-              className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto"
-              data-testid="waitlist-form"
-            >
-              <Input
-                type="email"
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="waitlist-input px-6 py-6 text-base flex-1"
-                data-testid="waitlist-email-input"
-              />
+            {hasJoinedWaitlist ? (
               <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="btn-primary px-8 py-6 text-base animate-pulse-glow"
-                data-testid="waitlist-submit-btn"
+                onClick={() => setShowShareModal(true)}
+                className="btn-primary px-10 py-6 text-lg"
+                data-testid="share-btn"
               >
-                {isSubmitting ? "Joining..." : "Join Waitlist"}
-                <ArrowRight className="ml-2 w-4 h-4" />
+                <Share2 className="mr-2 w-5 h-5" />
+                Share with Friends
               </Button>
-            </form>
+            ) : (
+              <form
+                onSubmit={handleWaitlistSubmit}
+                className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto"
+                data-testid="waitlist-form"
+              >
+                <Input
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="waitlist-input px-6 py-6 text-base flex-1"
+                  data-testid="waitlist-email-input"
+                />
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="btn-primary px-8 py-6 text-base animate-pulse-glow"
+                  data-testid="waitlist-submit-btn"
+                >
+                  {isSubmitting ? "Joining..." : "Join Waitlist"}
+                  <ArrowRight className="ml-2 w-4 h-4" />
+                </Button>
+              </form>
+            )}
           </AnimatedSection>
         </div>
       </section>
@@ -433,6 +446,9 @@ export default function LandingPage() {
           </p>
         </div>
       </footer>
+
+      {/* Share Modal */}
+      <ShareModal isOpen={showShareModal} onClose={() => setShowShareModal(false)} />
     </main>
   );
 }
