@@ -1,0 +1,137 @@
+{
+  "identity": {
+    "name": "Shutterscore",
+    "persona": "E1 - The Anti-AI Designer",
+    "tone": "Premium, Artistic, Impactful, Trustworthy",
+    "theme_mode": "dark",
+    "archetype": "Jewel & Luxury (Premium, Depth) mixed with Electric (Modern Tech)"
+  },
+  "typography": {
+    "headings": {
+      "family": "Cormorant Garamond, serif",
+      "weights": ["400", "600", "700"],
+      "usage": "All section headings (h1, h2, h3). Use italic style for emphasis words.",
+      "letter_spacing": "tracking-tight"
+    },
+    "body": {
+      "family": "Manrope, sans-serif",
+      "weights": ["300", "400", "500", "600"],
+      "usage": "Paragraphs, UI elements, buttons, labels.",
+      "letter_spacing": "tracking-normal"
+    },
+    "mono": {
+      "family": "JetBrains Mono, monospace",
+      "usage": "Data points, stats, technical labels."
+    }
+  },
+  "colors": {
+    "background": {
+      "default": "#050505",
+      "paper": "#0A0A0A",
+      "subtle": "#121212"
+    },
+    "foreground": {
+      "default": "#FFFFFF",
+      "muted": "#A1A1AA",
+      "subtle": "#52525B"
+    },
+    "primary": {
+      "default": "#7C3AED",
+      "foreground": "#FFFFFF",
+      "hover": "#6D28D9",
+      "description": "Electric Violet for primary actions and 'Score' branding."
+    },
+    "secondary": {
+      "default": "#10B981",
+      "foreground": "#FFFFFF",
+      "description": "Emerald Green for 'Charity/Impact' and success states."
+    },
+    "accent": {
+      "default": "#F59E0B",
+      "foreground": "#000000",
+      "description": "Golden Amber for 'Winner/Premium' highlights."
+    },
+    "border": {
+      "default": "#27272A",
+      "active": "#3F3F46"
+    }
+  },
+  "visual_enhancers": {
+    "gradients": {
+      "hero_overlay": "linear-gradient(to bottom, rgba(5,5,5,0) 0%, rgba(5,5,5,0.8) 80%, #050505 100%)",
+      "glow_violet": "radial-gradient(circle at center, rgba(124, 58, 237, 0.15) 0%, transparent 70%)",
+      "glow_emerald": "radial-gradient(circle at center, rgba(16, 185, 129, 0.15) 0%, transparent 70%)"
+    },
+    "shadows": {
+      "glow": "0 0 20px rgba(124, 58, 237, 0.3)",
+      "card": "0 4px 24px -4px rgba(0, 0, 0, 0.5)"
+    },
+    "borders": {
+      "glass": "1px solid rgba(255, 255, 255, 0.08)",
+      "active": "1px solid rgba(124, 58, 237, 0.5)"
+    },
+    "textures": {
+      "noise": "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E\")"
+    }
+  },
+  "layout_strategies": {
+    "spacing": {
+      "section_padding": "py-24 md:py-32",
+      "container_padding": "px-6 md:px-12",
+      "element_gap": "gap-8 md:gap-12"
+    },
+    "grids": {
+      "bento_features": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 auto-rows-[minmax(200px,auto)]",
+      "impact_stats": "grid grid-cols-1 md:grid-cols-3 gap-8"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-primary text-white rounded-full px-8 py-4 font-medium hover:bg-primary/90 transition-all shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:shadow-[0_0_30px_rgba(124,58,237,0.5)]",
+      "secondary": "bg-transparent border border-white/20 text-white rounded-full px-8 py-4 hover:bg-white/10 transition-all backdrop-blur-sm"
+    },
+    "cards": {
+      "feature": "bg-white/5 border border-white/10 rounded-2xl p-8 hover:border-primary/50 transition-colors group relative overflow-hidden backdrop-blur-md",
+      "impact": "bg-gradient-to-br from-white/5 to-transparent border border-white/10 rounded-2xl p-8 text-center"
+    },
+    "inputs": {
+      "waitlist": "bg-white/5 border border-white/10 rounded-full px-6 py-4 text-white placeholder:text-white/40 focus:border-primary focus:ring-1 focus:ring-primary outline-none w-full transition-all"
+    }
+  },
+  "image_urls": {
+    "hero_bg": {
+      "url": "https://images.unsplash.com/photo-1763356766882-4e6fbe10412c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHwxfHxkcmFtYXRpYyUyMGxhbmRzY2FwZSUyMHBob3RvZ3JhcGh5JTIwZGFyayUyMG1vb2R5fGVufDB8fHx8MTc3MDMyMjYwNHww&ixlib=rb-4.1.0&q=85",
+      "description": "Dramatic dark landscape for hero background",
+      "category": "hero"
+    },
+    "photographer_context": {
+      "url": "https://images.unsplash.com/photo-1745847768366-d44dcef9ef35?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwxfHxwaG90b2dyYXBoZXIlMjBob2xkaW5nJTIwY2FtZXJhJTIwcHJvZmVzc2lvbmFsfGVufDB8fHx8MTc3MDMyMjYwOHww&ixlib=rb-4.1.0&q=85",
+      "description": "Photographer focusing lens, used for 'Fair Judging' or 'For Photographers' section",
+      "category": "feature"
+    },
+    "gallery_context": {
+      "url": "https://images.unsplash.com/photo-1764922168474-8048361bc764?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBhcnQlMjBnYWxsZXJ5JTIwaW50ZXJpb3IlMjBtaW5pbWFsaXN0fGVufDB8fHx8MTc3MDMyMjYxMnww&ixlib=rb-4.1.0&q=85",
+      "description": "Minimalist art gallery, used for 'Beautiful Galleries' feature",
+      "category": "feature"
+    }
+  },
+  "instructions_to_main_agent": [
+    "1. SETUP: Install 'lenis' for smooth scrolling. This is MANDATORY for the premium feel.",
+    "2. FONTS: Import 'Cormorant Garamond' and 'Manrope' from Google Fonts in index.css.",
+    "3. THEME: Force DARK MODE. The app should look like a premium dark room.",
+    "4. HERO: Use the 'hero_bg' image with a heavy overlay (gradient from transparent to #050505) so text is readable. Title should be HUGE (text-6xl md:text-8xl) in Cormorant Garamond.",
+    "5. FEATURES: Build a 'Bento Grid'. Do not just stack cards. Make the 'Beautiful Galleries' card span 2 columns or rows to show off the image.",
+    "6. IMPACT: Use 'Fintech' style stats. Big numbers in JetBrains Mono or Manrope. Use the Emerald Green color here to signify money/charity.",
+    "7. WAITLIST: Make it a 'floating' section or a very clean, centered section at the bottom. Use a 'glow' effect behind the form.",
+    "8. ANIMATION: Use framer-motion for simple fade-ins (staggered) on scroll. No complex 3D unless necessary, keep it performant.",
+    "9. ICONS: Use 'lucide-react' with thin strokes (stroke-width={1.5}) to match the elegant vibe.",
+    "10. DATA-TESTID: Add data-testid to all interactive elements (buttons, inputs)."
+  ],
+  "universal_guidelines": [
+    "Avoid 'AI slop' - no generic centered layouts without tension.",
+    "Use noise texture overlays to kill digital flatness.",
+    "Ensure contrast ratios are met (White text on #050505 is safe, but check grey text).",
+    "Do not use 'Inter' for headings.",
+    "Use 'sonner' for toasts."
+  ]
+}
