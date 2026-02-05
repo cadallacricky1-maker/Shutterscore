@@ -163,10 +163,22 @@ export default function LandingPage() {
     document.getElementById("waitlist")?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const isValidEmail = (email) => {
+    const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return emailPattern.test(email);
+  };
+
   const handleWaitlistSubmit = async (e) => {
     e.preventDefault();
-    if (!email.trim()) {
+    const trimmedEmail = email.trim();
+    
+    if (!trimmedEmail) {
       toast.error("Please enter your email address");
+      return;
+    }
+    
+    if (!isValidEmail(trimmedEmail)) {
+      toast.error("Please enter a valid email address");
       return;
     }
 
