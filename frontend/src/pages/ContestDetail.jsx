@@ -15,10 +15,14 @@ import {
   Award,
   Crown,
   Target,
+  Heart,
+  CreditCard,
+  Loader2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
+import { Slider } from "../components/ui/slider";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +30,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -38,8 +49,9 @@ const RankBadge = ({ rank }) => {
   return <span className="text-gray-500 font-bold">#{rank}</span>;
 };
 
-// Photo submission form
-const SubmitPhotoForm = ({ contestId, onSuccess }) => {
+// Photo submission form with payment
+const SubmitPhotoForm = ({ contestId, entryFee, onSuccess }) => {
+  const [step, setStep] = useState(1); // 1: info, 2: payment, 3: upload
   const [formData, setFormData] = useState({
     photographer_name: "",
     photographer_email: "",
@@ -47,12 +59,75 @@ const SubmitPhotoForm = ({ contestId, onSuccess }) => {
     title: "",
     description: "",
   });
+  const [packageId, setPackageId] = useState("standard");
+  const [charityId, setCharityId] = useState("");
+  const [charityPercentage, setCharityPercentage] = useState(10);
+  const [charities, setCharities] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPaid, setIsPaid] = useState(false);
 
-  const handleSubmit = async (e) => {
+  useEffect(() => {
+    // Fetch charities
+    axios.get(`${API}/charities`).then(res => {
+      setCharities(res.data.charities || []);
+      if (res.data.charities?.length > 0) {
+        setCharityId(res.data.charities[0].id);
+      }
+    }).catch(console.error);
+  }, []);
+
+  const packages = {
+    free: { amount: 0, label: "Free Entry" },
+    standard: { amount: 5, label: "Standard Entry ($5)" },
+    premium: { amount: 10, label: "Premium Entry ($10)" },
+  };
+
+  const handlePayment = async () => {
+    if (!formData.photographer_name || !formData.photographer_email) {
+      toast.error("Please fill in your name and email first");
+      setStep(1);
+      return;
+    }
+
+    const pkg = packages[packageId];
+    if (pkg.amount === 0) {
+      setIsPaid(true);
+      setStep(3);
+      toast.success("Free entry! Now upload your photo.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await axios.post(`${API}/payments/create-checkout`, {
+        contest_id: contestId,
+        payer_name: formData.photographer_name,
+        payer_email: formData.photographer_email,
+        package_id: packageId,
+        charity_id: charityId,
+        charity_percentage: charityPercentage,
+        origin_url: window.location.origin,
+      });
+
+      if (response.data.is_free) {
+        setIsPaid(true);
+        setStep(3);
+        toast.success("Free entry confirmed!");
+      } else if (response.data.checkout_url) {
+        // Redirect to Stripe
+        window.location.href = response.data.checkout_url;
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Payment failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmitPhoto = async (e) => {
     e.preventDefault();
-    if (!formData.photographer_name || !formData.photographer_email || !formData.photo_url || !formData.title) {
-      toast.error("Please fill in all required fields");
+    if (!formData.photo_url || !formData.title) {
+      toast.error("Please provide photo URL and title");
       return;
     }
 
@@ -71,59 +146,216 @@ const SubmitPhotoForm = ({ contestId, onSuccess }) => {
     }
   };
 
+  const charityAmount = packages[packageId]?.amount * (charityPercentage / 100);
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="text-sm text-gray-400 mb-1 block">Your Name *</label>
-        <Input
-          value={formData.photographer_name}
-          onChange={(e) => setFormData({ ...formData, photographer_name: e.target.value })}
-          placeholder="John Doe"
-          className="bg-white/5 border-white/10 text-white"
-        />
+    <div className="space-y-6">
+      {/* Step Indicator */}
+      <div className="flex items-center justify-center gap-2 mb-6">
+        {[1, 2, 3].map((s) => (
+          <div
+            key={s}
+            className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+              step === s
+                ? "bg-purple-600 text-white"
+                : step > s
+                ? "bg-emerald-600 text-white"
+                : "bg-white/10 text-gray-400"
+            }`}
+          >
+            {s}
+          </div>
+        ))}
       </div>
-      <div>
-        <label className="text-sm text-gray-400 mb-1 block">Your Email *</label>
-        <Input
-          type="email"
-          value={formData.photographer_email}
-          onChange={(e) => setFormData({ ...formData, photographer_email: e.target.value })}
-          placeholder="john@example.com"
-          className="bg-white/5 border-white/10 text-white"
-        />
-      </div>
-      <div>
-        <label className="text-sm text-gray-400 mb-1 block">Photo URL *</label>
-        <Input
-          value={formData.photo_url}
-          onChange={(e) => setFormData({ ...formData, photo_url: e.target.value })}
-          placeholder="https://example.com/photo.jpg"
-          className="bg-white/5 border-white/10 text-white"
-        />
-        <p className="text-xs text-gray-500 mt-1">Paste a direct link to your photo (Unsplash, Imgur, etc.)</p>
-      </div>
-      <div>
-        <label className="text-sm text-gray-400 mb-1 block">Photo Title *</label>
-        <Input
-          value={formData.title}
-          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-          placeholder="Sunset Over Chicago"
-          className="bg-white/5 border-white/10 text-white"
-        />
-      </div>
-      <div>
-        <label className="text-sm text-gray-400 mb-1 block">Description (optional)</label>
-        <Textarea
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          placeholder="Tell us about your photo..."
-          className="bg-white/5 border-white/10 text-white"
-        />
-      </div>
-      <Button type="submit" disabled={isSubmitting} className="w-full bg-purple-600 hover:bg-purple-700">
-        {isSubmitting ? "Submitting..." : "Submit Photo"}
-      </Button>
-    </form>
+
+      {/* Step 1: Basic Info */}
+      {step === 1 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-white">Your Information</h3>
+          <div>
+            <label className="text-sm text-gray-400 mb-1 block">Your Name *</label>
+            <Input
+              value={formData.photographer_name}
+              onChange={(e) => setFormData({ ...formData, photographer_name: e.target.value })}
+              placeholder="John Doe"
+              className="bg-white/5 border-white/10 text-white"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-gray-400 mb-1 block">Your Email *</label>
+            <Input
+              type="email"
+              value={formData.photographer_email}
+              onChange={(e) => setFormData({ ...formData, photographer_email: e.target.value })}
+              placeholder="john@example.com"
+              className="bg-white/5 border-white/10 text-white"
+            />
+          </div>
+          <Button
+            onClick={() => setStep(2)}
+            disabled={!formData.photographer_name || !formData.photographer_email}
+            className="w-full bg-purple-600 hover:bg-purple-700"
+          >
+            Continue to Payment
+          </Button>
+        </div>
+      )}
+
+      {/* Step 2: Payment */}
+      {step === 2 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-white">Entry Fee & Donation</h3>
+          
+          {/* Package Selection */}
+          <div>
+            <label className="text-sm text-gray-400 mb-2 block">Entry Package</label>
+            <Select value={packageId} onValueChange={setPackageId}>
+              <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-[#0A0A0A] border-white/10">
+                {Object.entries(packages).map(([id, pkg]) => (
+                  <SelectItem key={id} value={id} className="text-white">
+                    {pkg.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {packages[packageId]?.amount > 0 && (
+            <>
+              {/* Charity Selection */}
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Donate to Charity</label>
+                <Select value={charityId} onValueChange={setCharityId}>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                    <SelectValue placeholder="Select a charity" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0A0A0A] border-white/10">
+                    {charities.map((charity) => (
+                      <SelectItem key={charity.id} value={charity.id} className="text-white">
+                        <div className="flex items-center gap-2">
+                          <Heart className="w-4 h-4 text-emerald-400" />
+                          {charity.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Charity Percentage */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm text-gray-400">Donation Percentage</label>
+                  <span className="text-emerald-400 font-bold">{charityPercentage}%</span>
+                </div>
+                <Slider
+                  value={[charityPercentage]}
+                  onValueChange={(val) => setCharityPercentage(val[0])}
+                  min={0}
+                  max={50}
+                  step={5}
+                  className="w-full"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  ${charityAmount.toFixed(2)} goes to charity
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* Summary */}
+          <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-400">Entry Fee</span>
+              <span className="text-white font-bold">${packages[packageId]?.amount || 0}</span>
+            </div>
+            {charityAmount > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-emerald-400">→ To Charity</span>
+                <span className="text-emerald-400">${charityAmount.toFixed(2)}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setStep(1)} className="flex-1 border-white/10 text-white">
+              Back
+            </Button>
+            <Button
+              onClick={handlePayment}
+              disabled={isSubmitting}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <CreditCard className="w-4 h-4 mr-2" />
+              )}
+              {packages[packageId]?.amount === 0 ? "Continue Free" : "Pay & Continue"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Upload Photo */}
+      {step === 3 && (
+        <form onSubmit={handleSubmitPhoto} className="space-y-4">
+          <h3 className="text-lg font-semibold text-white">Upload Your Photo</h3>
+          
+          <div className="p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm">
+            ✓ Payment confirmed! Now upload your photo.
+          </div>
+
+          <div>
+            <label className="text-sm text-gray-400 mb-1 block">Photo URL *</label>
+            <Input
+              value={formData.photo_url}
+              onChange={(e) => setFormData({ ...formData, photo_url: e.target.value })}
+              placeholder="https://example.com/photo.jpg"
+              className="bg-white/5 border-white/10 text-white"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Paste a direct link to your photo (Unsplash, Imgur, Google Photos, etc.)
+            </p>
+          </div>
+          <div>
+            <label className="text-sm text-gray-400 mb-1 block">Photo Title *</label>
+            <Input
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              placeholder="Sunset Over Chicago"
+              className="bg-white/5 border-white/10 text-white"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-gray-400 mb-1 block">Description (optional)</label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Tell us about your photo..."
+              className="bg-white/5 border-white/10 text-white"
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setStep(2)} className="flex-1 border-white/10 text-white">
+              Back
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="flex-1 bg-purple-600 hover:bg-purple-700"
+            >
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
+              Submit Photo
+            </Button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 };
 
@@ -159,7 +391,7 @@ export default function ContestDetail() {
   if (isLoading) {
     return (
       <main className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
-        <div className="text-gray-400">Loading contest...</div>
+        <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
       </main>
     );
   }
@@ -193,12 +425,13 @@ export default function ContestDetail() {
                   Submit Photo
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-[#0A0A0A] border-white/10 max-w-md">
+              <DialogContent className="bg-[#0A0A0A] border-white/10 max-w-md max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle className="text-white">Submit Your Photo</DialogTitle>
+                  <DialogTitle className="text-white">Enter Contest</DialogTitle>
                 </DialogHeader>
                 <SubmitPhotoForm
                   contestId={contestId}
+                  entryFee={contest.entry_fee}
                   onSuccess={() => {
                     setShowSubmitDialog(false);
                     fetchData();
