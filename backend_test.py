@@ -476,6 +476,154 @@ class ShutterscoreAPITester:
         
         return success and success_404
 
+    # NEW LEADERBOARD TESTS
+    def test_leaderboard_endpoint(self):
+        """Test public leaderboard endpoint"""
+        success, response = self.run_test(
+            "Public Leaderboard",
+            "GET",
+            "leaderboard",
+            200,
+            expected_response_keys=["entries", "total_participants"]
+        )
+        
+        if success:
+            entries = response.get('entries', [])
+            total_participants = response.get('total_participants', 0)
+            print(f"   Total participants with referrals: {total_participants}")
+            print(f"   Leaderboard entries returned: {len(entries)}")
+            
+            # Check entry structure
+            if entries:
+                first_entry = entries[0]
+                required_fields = ['rank', 'email_masked', 'referral_code', 'referral_count']
+                for field in required_fields:
+                    if field in first_entry:
+                        print(f"   ✓ Entry has {field} field")
+                    else:
+                        print(f"   ⚠️  Entry missing {field} field")
+                        success = False
+                
+                # Check if email is properly masked
+                email_masked = first_entry.get('email_masked', '')
+                if '***' in email_masked and '@' in email_masked:
+                    print(f"   ✓ Email properly masked: {email_masked}")
+                else:
+                    print(f"   ⚠️  Email masking may not be working: {email_masked}")
+                
+                # Check if entries are sorted by referral_count (descending)
+                if len(entries) > 1:
+                    first_count = entries[0].get('referral_count', 0)
+                    second_count = entries[1].get('referral_count', 0)
+                    if first_count >= second_count:
+                        print("   ✓ Entries properly sorted by referral count")
+                    else:
+                        print("   ⚠️  Entries may not be sorted correctly")
+        
+        return success
+
+    def test_leaderboard_with_limit(self):
+        """Test leaderboard with limit parameter"""
+        success, response = self.run_test(
+            "Leaderboard with Limit",
+            "GET",
+            "leaderboard?limit=5",
+            200,
+            expected_response_keys=["entries", "total_participants"]
+        )
+        
+        if success:
+            entries = response.get('entries', [])
+            if len(entries) <= 5:
+                print(f"   ✓ Limit respected: {len(entries)} entries returned")
+            else:
+                print(f"   ⚠️  Limit not respected: {len(entries)} entries returned (expected ≤5)")
+                success = False
+        
+        return success
+
+    def test_position_lookup(self):
+        """Test position lookup by email"""
+        # First create a test user
+        test_email = f"position_test_{datetime.now().strftime('%H%M%S')}@example.com"
+        success1, response1 = self.run_test(
+            "Create User for Position Test",
+            "POST",
+            "waitlist",
+            200,
+            data={"email": test_email},
+            expected_response_keys=["success", "entry", "position", "total_waitlist"]
+        )
+        
+        if not success1:
+            return False
+        
+        # Test position lookup
+        success2, response2 = self.run_test(
+            "Position Lookup by Email",
+            "GET",
+            f"waitlist/position/{test_email}",
+            200,
+            expected_response_keys=["email", "position", "total_waitlist", "referral_count", "referral_code"]
+        )
+        
+        if success2:
+            position = response2.get('position')
+            total = response2.get('total_waitlist')
+            email_masked = response2.get('email')
+            
+            print(f"   Position: {position}")
+            print(f"   Total waitlist: {total}")
+            print(f"   Masked email: {email_masked}")
+            
+            # Check if email is masked in response
+            if '***' in email_masked:
+                print("   ✓ Email properly masked in position lookup")
+            else:
+                print("   ⚠️  Email not masked in position lookup")
+        
+        return success2
+
+    def test_position_lookup_nonexistent(self):
+        """Test position lookup for non-existent email"""
+        return self.run_test(
+            "Position Lookup - Non-existent Email",
+            "GET",
+            "waitlist/position/nonexistent@example.com",
+            404
+        )
+
+    def test_waitlist_response_includes_position(self):
+        """Test that waitlist signup response includes position and total"""
+        test_email = f"position_response_{datetime.now().strftime('%H%M%S')}@example.com"
+        success, response = self.run_test(
+            "Waitlist Response Position Fields",
+            "POST",
+            "waitlist",
+            200,
+            data={"email": test_email},
+            expected_response_keys=["success", "message", "entry", "position", "total_waitlist"]
+        )
+        
+        if success:
+            position = response.get('position')
+            total_waitlist = response.get('total_waitlist')
+            
+            if position and total_waitlist:
+                print(f"   ✓ Position: {position}, Total: {total_waitlist}")
+                
+                # Check if position is reasonable
+                if 1 <= position <= total_waitlist:
+                    print("   ✓ Position is within valid range")
+                else:
+                    print(f"   ⚠️  Position {position} not in valid range 1-{total_waitlist}")
+                    success = False
+            else:
+                print("   ⚠️  Missing position or total_waitlist in response")
+                success = False
+        
+        return success
+
 def main():
     print("🚀 Starting Shutterscore API Tests...")
     print("=" * 50)
