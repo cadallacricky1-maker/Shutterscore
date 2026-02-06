@@ -666,6 +666,253 @@ async def delete_waitlist_entry(entry_id: str, admin: str = Depends(verify_admin
     return {"success": True, "message": "Entry deleted successfully"}
 
 
+# Social Proof Stats (Public)
+class SocialProofStats(BaseModel):
+    total_signups: int
+    recent_signups: int  # Last 24 hours
+    total_referrals: int
+    top_referrer_count: int
+
+
+@api_router.get("/stats/social-proof", response_model=SocialProofStats)
+async def get_social_proof_stats():
+    """Public endpoint for social proof counter on landing page"""
+    total = await db.waitlist.count_documents({})
+    
+    # Recent signups (last 24 hours)
+    yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
+    recent = await db.waitlist.count_documents({
+        "created_at": {"$gte": yesterday.isoformat()}
+    })
+    
+    # Total referrals
+    pipeline = [
+        {"$group": {"_id": None, "total": {"$sum": "$referral_count"}}}
+    ]
+    result = await db.waitlist.aggregate(pipeline).to_list(1)
+    total_referrals = result[0]["total"] if result else 0
+    
+    # Top referrer count
+    top_referrer = await db.waitlist.find_one(
+        {},
+        {"_id": 0, "referral_count": 1},
+        sort=[("referral_count", -1)]
+    )
+    top_count = top_referrer.get("referral_count", 0) if top_referrer else 0
+    
+    return SocialProofStats(
+        total_signups=total,
+        recent_signups=recent,
+        total_referrals=total_referrals,
+        top_referrer_count=top_count
+    )
+
+
+# Weekly Digest Email Template
+def get_weekly_digest_email_html(
+    email: str,
+    position: int,
+    total: int,
+    referral_count: int,
+    referral_code: str,
+    referral_link: str,
+    position_change: int,
+    new_signups_this_week: int,
+    top_referrers: list
+):
+    """Generate weekly digest email HTML"""
+    position_text = ""
+    if position_change > 0:
+        position_text = f'<span style="color: #10B981;">↑ Moved up {position_change} spots!</span>'
+    elif position_change < 0:
+        position_text = f'<span style="color: #EF4444;">↓ Dropped {abs(position_change)} spots</span>'
+    else:
+        position_text = '<span style="color: #A1A1AA;">No change this week</span>'
+    
+    leaderboard_html = ""
+    for idx, leader in enumerate(top_referrers[:5]):
+        leaderboard_html += f'''
+        <tr style="border-bottom: 1px solid #27272A;">
+            <td style="padding: 12px; color: #A1A1AA;">#{idx + 1}</td>
+            <td style="padding: 12px; color: #ffffff;">{leader['email_masked']}</td>
+            <td style="padding: 12px; color: #10B981; text-align: right;">{leader['referral_count']} referrals</td>
+        </tr>
+        '''
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: Arial, sans-serif; background-color: #050505; color: #ffffff; padding: 40px; margin: 0;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #0A0A0A; border-radius: 16px; padding: 40px; border: 1px solid #27272A;">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="font-size: 36px; margin: 0; color: #ffffff;">
+                    Shutter<span style="color: #7C3AED;">score</span>
+                </h1>
+                <p style="color: #A1A1AA; margin-top: 8px;">Weekly Waitlist Update</p>
+            </div>
+            
+            <h2 style="color: #ffffff; font-size: 24px; margin-bottom: 24px; text-align: center;">
+                Your Weekly Stats 📊
+            </h2>
+            
+            <!-- Position Card -->
+            <div style="background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%); border-radius: 12px; padding: 24px; margin: 24px 0; text-align: center;">
+                <p style="color: rgba(255,255,255,0.8); font-size: 14px; margin: 0 0 8px 0;">Your Position</p>
+                <p style="color: #ffffff; font-size: 48px; font-weight: bold; margin: 0;">#{position}</p>
+                <p style="font-size: 14px; margin: 8px 0 0 0;">{position_text}</p>
+            </div>
+            
+            <!-- Stats Grid -->
+            <div style="display: flex; gap: 16px; margin: 24px 0;">
+                <div style="flex: 1; background-color: #121212; border-radius: 8px; padding: 16px; text-align: center;">
+                    <p style="color: #A1A1AA; font-size: 12px; margin: 0;">Your Referrals</p>
+                    <p style="color: #10B981; font-size: 24px; font-weight: bold; margin: 4px 0 0 0;">{referral_count}</p>
+                </div>
+                <div style="flex: 1; background-color: #121212; border-radius: 8px; padding: 16px; text-align: center;">
+                    <p style="color: #A1A1AA; font-size: 12px; margin: 0;">Total Waitlist</p>
+                    <p style="color: #7C3AED; font-size: 24px; font-weight: bold; margin: 4px 0 0 0;">{total}</p>
+                </div>
+                <div style="flex: 1; background-color: #121212; border-radius: 8px; padding: 16px; text-align: center;">
+                    <p style="color: #A1A1AA; font-size: 12px; margin: 0;">New This Week</p>
+                    <p style="color: #F59E0B; font-size: 24px; font-weight: bold; margin: 4px 0 0 0;">+{new_signups_this_week}</p>
+                </div>
+            </div>
+            
+            <!-- Leaderboard -->
+            <div style="margin: 32px 0;">
+                <h3 style="color: #ffffff; font-size: 18px; margin-bottom: 16px;">🏆 Top Referrers This Week</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    {leaderboard_html}
+                </table>
+            </div>
+            
+            <!-- CTA -->
+            <div style="background-color: #121212; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: center;">
+                <p style="color: #ffffff; font-size: 16px; margin: 0 0 16px 0;">
+                    Want to climb higher? Share your referral link!
+                </p>
+                <a href="{referral_link}" style="display: inline-block; background-color: #7C3AED; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                    Share Now →
+                </a>
+                <p style="color: #A1A1AA; font-size: 12px; margin: 16px 0 0 0;">
+                    Your code: <span style="color: #10B981;">{referral_code}</span>
+                </p>
+            </div>
+            
+            <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #27272A; text-align: center;">
+                <p style="color: #52525B; font-size: 12px; margin: 0;">
+                    © 2026 Shutterscore. Photo contests with purpose.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+async def send_weekly_digest_email(
+    email: str,
+    position: int,
+    total: int,
+    referral_count: int,
+    referral_code: str,
+    referral_link: str,
+    position_change: int,
+    new_signups_this_week: int,
+    top_referrers: list
+):
+    """Send weekly digest email"""
+    try:
+        html_content = get_weekly_digest_email_html(
+            email, position, total, referral_count, referral_code,
+            referral_link, position_change, new_signups_this_week, top_referrers
+        )
+        
+        params = {
+            "from": SENDER_EMAIL,
+            "to": [email],
+            "subject": f"📊 Shutterscore Weekly: You're #{position} — Here's your update",
+            "html": html_content
+        }
+        
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"Weekly digest sent to {email}, ID: {result.get('id', 'unknown')}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send weekly digest to {email}: {str(e)}")
+        return False
+
+
+# Admin endpoint to trigger weekly digest (can be called by cron job)
+class WeeklyDigestResponse(BaseModel):
+    success: bool
+    emails_sent: int
+    message: str
+
+
+@api_router.post("/admin/send-weekly-digest", response_model=WeeklyDigestResponse)
+async def trigger_weekly_digest(admin: str = Depends(verify_admin)):
+    """Send weekly digest to all waitlist members (admin only)"""
+    # Get all waitlist entries
+    entries = await db.waitlist.find({}, {"_id": 0}).to_list(10000)
+    total = len(entries)
+    
+    # Calculate new signups this week
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    new_signups = await db.waitlist.count_documents({
+        "created_at": {"$gte": week_ago.isoformat()}
+    })
+    
+    # Get top referrers for leaderboard
+    top_referrers_raw = await db.waitlist.find(
+        {"referral_count": {"$gt": 0}},
+        {"_id": 0}
+    ).sort("referral_count", -1).limit(5).to_list(5)
+    
+    top_referrers = [
+        {"email_masked": mask_email(r.get('email', '')), "referral_count": r.get('referral_count', 0)}
+        for r in top_referrers_raw
+    ]
+    
+    emails_sent = 0
+    
+    for entry in entries:
+        email = entry.get('email', '')
+        referral_code = entry.get('referral_code', '')
+        referral_count = entry.get('referral_count', 0)
+        entry_id = entry.get('id', '')
+        
+        # Calculate current position
+        position = await calculate_position(entry_id)
+        
+        # Get previous position from stored field or estimate
+        previous_position = entry.get('last_position', position)
+        position_change = previous_position - position  # Positive = moved up
+        
+        referral_link = f"https://shutterscore.com/?ref={referral_code}"
+        
+        # Send email
+        success = await send_weekly_digest_email(
+            email, position, total, referral_count, referral_code,
+            referral_link, position_change, new_signups, top_referrers
+        )
+        
+        if success:
+            emails_sent += 1
+            # Update last_position for next week's comparison
+            await db.waitlist.update_one(
+                {"id": entry_id},
+                {"$set": {"last_position": position}}
+            )
+    
+    return WeeklyDigestResponse(
+        success=True,
+        emails_sent=emails_sent,
+        message=f"Weekly digest sent to {emails_sent} of {total} subscribers"
+    )
+
+
 # Include the router in the main app
 app.include_router(api_router)
 
