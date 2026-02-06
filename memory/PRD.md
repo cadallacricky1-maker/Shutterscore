@@ -8,15 +8,6 @@ Build a landing page for Shutterscore - a photo contest platform with seamless p
 - **Contest Organizers**: Need tools to run fair, transparent photo competitions
 - **Admins**: Need to manage waitlist signups and track growth
 
-## Core Requirements (Static)
-1. Stunning, premium landing page with dark theme
-2. Email waitlist collection with MongoDB storage
-3. Admin panel for waitlist management (password protected)
-4. Referral tracking system
-5. Email notifications on signup
-6. Social sharing capabilities
-7. Open Graph meta tags for social previews
-
 ## What's Been Implemented (Feb 2026)
 
 ### Phase 1 - MVP Landing Page ✅
@@ -24,40 +15,44 @@ Build a landing page for Shutterscore - a photo contest platform with seamless p
 - Features bento grid (6 features)
 - Impact stats section
 - Waitlist form with validation
-- Toast notifications
-- Framer Motion animations
+- Toast notifications, Framer Motion animations
 
 ### Phase 2 - Admin & Sharing ✅
 - Admin panel at `/admin` with stats dashboard
-- CSV export functionality
-- Share with Friends modal
+- CSV export, search, delete functionality
+- Share with Friends modal (Twitter, Facebook, LinkedIn, Email)
 - Open Graph meta tags
 
 ### Phase 3 - Auth, Referrals & Email ✅
-- **Admin Authentication**: Password protection ("shutterscore2026")
-  - Login page with password input
-  - Session stored in sessionStorage (Basic auth)
-  - Logout functionality
-- **Referral Tracking System**:
-  - Each user gets unique 8-char referral code
-  - Referral links: `?ref=CODE`
-  - Referrer's count increments when someone signs up with their code
-  - Admin can see: Referral Code, Referred By, Referral Count
-  - Total Referrals stat in dashboard
-- **Email Notifications** (Resend via Emergent LLM key):
-  - Welcome email sent on signup
-  - Includes referral code and link
-  - Dark themed HTML email template
+- Admin password protection ("shutterscore2026")
+- Referral tracking (unique codes, referral links)
+- Welcome emails via Resend with position info
+
+### Phase 4 - Leaderboard, Position & Milestones ✅
+- **Public Leaderboard** (`/leaderboard`):
+  - Top referrers with rank badges (crown, medal, award)
+  - Masked emails for privacy (r***e@e***.com)
+  - Referral codes and counts displayed
+  - "X people with referrals" counter
+- **Waitlist Position Display**:
+  - Shows "#X out of Y people" after signup
+  - Position based on referral count (more referrals = better rank)
+  - Beautiful purple gradient position card
+  - "Share & Move Up" + "View Leaderboard" buttons
+- **Milestone Emails**:
+  - Top 100, Top 50, Top 10 position milestones
+  - 5 referrals, 10 referrals milestones
+  - Beautiful HTML email templates with position info
 
 ## API Endpoints
-- `POST /api/waitlist` - Join waitlist (accepts `ref` param for referrals)
-- `GET /api/waitlist/count` - Get total count
+- `POST /api/waitlist` - Join (returns position, total_waitlist)
+- `GET /api/leaderboard` - Public leaderboard (limit param)
+- `GET /api/waitlist/position/{email}` - Lookup position
 - `POST /api/admin/login` - Admin login
-- `GET /api/admin/verify` - Verify admin session
 - `GET /api/admin/waitlist` - List entries (protected)
-- `GET /api/admin/waitlist/stats` - Statistics including total_referrals (protected)
-- `GET /api/admin/waitlist/export` - Export CSV (protected)
-- `DELETE /api/admin/waitlist/{id}` - Remove entry (protected)
+- `GET /api/admin/waitlist/stats` - Statistics (protected)
+- `GET /api/admin/waitlist/export` - CSV export (protected)
+- `DELETE /api/admin/waitlist/{id}` - Delete entry (protected)
 
 ## Environment Variables
 - `ADMIN_PASSWORD` - Admin panel password
@@ -67,24 +62,20 @@ Build a landing page for Shutterscore - a photo contest platform with seamless p
 ## Prioritized Backlog
 
 ### P0 - Complete ✅
-- Landing page, Admin panel, Referral tracking, Email notifications
+All requested features implemented
 
-### P1 - Next Phase
-- Leaderboard page showing top referrers
-- Waitlist position/rank display
-- Custom email templates per milestone
+### P1 - Future Enhancements
+- Waitlist position lookup by email on landing page
+- Weekly digest emails to waitlist
+- Social proof counter on hero ("X people joined")
 
-### P2 - Future
+### P2 - Product Features
 - Contest creation flow
 - Payment integration (Stripe)
 - Judge panel system
+- Charity API integration
 
 ## Tech Stack
 - Frontend: React, Tailwind CSS, Framer Motion, Shadcn/UI
 - Backend: FastAPI, MongoDB, Resend
 - Auth: Simple password (HTTP Basic)
-
-## Next Tasks
-1. Create public leaderboard showing top referrers
-2. Show user's waitlist position after signup
-3. Milestone emails (e.g., "You're in top 100!")
