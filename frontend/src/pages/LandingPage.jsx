@@ -421,21 +421,54 @@ export default function LandingPage() {
             >
               {hasJoinedWaitlist ? "You're In!" : "Ready to Launch?"}
             </h2>
-            <p className="text-lg text-gray-400 mb-12">
+            
+            {/* Position Display */}
+            {hasJoinedWaitlist && position && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="mb-8"
+              >
+                <div className="inline-block bg-gradient-to-r from-purple-600 to-purple-700 rounded-2xl p-6 shadow-lg shadow-purple-500/20">
+                  <p className="text-purple-200 text-sm mb-1">Your Position</p>
+                  <p className="text-5xl font-bold text-white" data-testid="position-display">
+                    #{position}
+                  </p>
+                  {totalWaitlist && (
+                    <p className="text-purple-200 text-sm mt-1">
+                      out of {totalWaitlist} people
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+            )}
+            
+            <p className="text-lg text-gray-400 mb-8">
               {hasJoinedWaitlist
-                ? "Thanks for joining! Share with friends to move up the waitlist."
+                ? "Share with friends to move up the waitlist!"
                 : "Join early — get lifetime discounts as a founding creator. Launching soon."}
             </p>
 
             {hasJoinedWaitlist ? (
-              <Button
-                onClick={() => setShowShareModal(true)}
-                className="btn-primary px-10 py-6 text-lg"
-                data-testid="share-btn"
-              >
-                <Share2 className="mr-2 w-5 h-5" />
-                Share with Friends
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Button
+                  onClick={() => setShowShareModal(true)}
+                  className="btn-primary px-10 py-6 text-lg"
+                  data-testid="share-btn"
+                >
+                  <Share2 className="mr-2 w-5 h-5" />
+                  Share & Move Up
+                </Button>
+                <a href="/leaderboard">
+                  <Button
+                    variant="outline"
+                    className="btn-secondary px-10 py-6 text-lg w-full"
+                    data-testid="leaderboard-btn"
+                  >
+                    View Leaderboard
+                  </Button>
+                </a>
+              </div>
             ) : (
               <form
                 onSubmit={handleWaitlistSubmit}
@@ -468,14 +501,20 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="footer-gradient py-16 px-6 border-t border-white/5">
         <div className="max-w-6xl mx-auto text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Camera className="w-5 h-5 text-purple-400" />
-            <span
-              className="text-xl font-semibold"
-              style={{ fontFamily: "'Cormorant Garamond', serif" }}
-            >
-              Shutterscore
-            </span>
+          <div className="flex items-center justify-center gap-6 mb-4">
+            <div className="flex items-center gap-2">
+              <Camera className="w-5 h-5 text-purple-400" />
+              <span
+                className="text-xl font-semibold"
+                style={{ fontFamily: "'Cormorant Garamond', serif" }}
+              >
+                Shutterscore
+              </span>
+            </div>
+            <span className="text-gray-600">•</span>
+            <a href="/leaderboard" className="text-gray-400 hover:text-purple-400 transition-colors text-sm">
+              Leaderboard
+            </a>
           </div>
           <p className="text-gray-500 text-sm">
             © 2026 Shutterscore. Built with 📷 in Chicago.
