@@ -1379,6 +1379,411 @@ async def get_contest_leaderboard(contest_id: str):
     return {"leaderboard": leaderboard}
 
 
+# ============================================
+# CLOUDINARY IMAGE UPLOAD
+# ============================================
+
+import cloudinary
+import cloudinary.utils
+import cloudinary.uploader
+
+# Initialize Cloudinary
+cloudinary.config(
+    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME", ""),
+    api_key=os.environ.get("CLOUDINARY_API_KEY", ""),
+    api_secret=os.environ.get("CLOUDINARY_API_SECRET", ""),
+    secure=True
+)
+
+ALLOWED_FOLDERS = ("contests/", "photos/", "uploads/")
+
+
+@api_router.get("/cloudinary/signature")
+async def get_cloudinary_signature(
+    folder: str = Query("photos", description="Upload folder"),
+    resource_type: str = Query("image", enum=["image", "video"])
+):
+    """Generate signed upload params for Cloudinary"""
+    if not os.environ.get("CLOUDINARY_API_SECRET"):
+        raise HTTPException(status_code=503, detail="Cloudinary not configured. Please add credentials.")
+    
+    # Validate folder
+    if not any(folder.startswith(f) for f in ALLOWED_FOLDERS):
+        folder = "photos/" + folder
+    
+    timestamp = int(time.time())
+    params = {
+        "timestamp": timestamp,
+        "folder": folder,
+        "resource_type": resource_type
+    }
+    
+    signature = cloudinary.utils.api_sign_request(
+        params,
+        os.environ.get("CLOUDINARY_API_SECRET")
+    )
+    
+    return {
+        "signature": signature,
+        "timestamp": timestamp,
+        "cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME"),
+        "api_key": os.environ.get("CLOUDINARY_API_KEY"),
+        "folder": folder,
+        "resource_type": resource_type
+    }
+
+
+# ============================================
+# STRIPE PAYMENT SYSTEM
+# ============================================
+
+from emergentintegrations.payments.stripe.checkout import (
+    StripeCheckout, 
+    CheckoutSessionResponse, 
+    CheckoutStatusResponse, 
+    CheckoutSessionRequest
+)
+from fastapi import Request
+
+STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
+
+# Entry fee packages (fixed server-side)
+ENTRY_FEE_PACKAGES = {
+    "free": {"amount": 0.0, "label": "Free Entry"},
+    "standard": {"amount": 5.0, "label": "Standard Entry ($5)"},
+    "premium": {"amount": 10.0, "label": "Premium Entry ($10)"},
+}
+
+# Charity pool - list of supported charities
+CHARITIES = [
+    {"id": "wildlife", "name": "World Wildlife Fund", "description": "Protecting wildlife and wild places"},
+    {"id": "ocean", "name": "Ocean Conservancy", "description": "Protecting the ocean from today's greatest challenges"},
+    {"id": "habitat", "name": "Habitat for Humanity", "description": "Building homes, communities and hope"},
+    {"id": "doctors", "name": "Doctors Without Borders", "description": "Medical humanitarian organization"},
+    {"id": "education", "name": "Room to Read", "description": "World change starts with educated children"},
+]
+
+
+# Payment Models
+class PaymentTransaction(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    session_id: str
+    contest_id: str
+    photo_id: Optional[str] = None
+    payer_email: str
+    payer_name: str
+    amount: float
+    currency: str = "usd"
+    charity_id: Optional[str] = None
+    charity_amount: float = 0
+    status: str = "pending"  # pending, paid, failed, expired
+    payment_status: str = "initiated"
+    metadata: dict = {}
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CharityPool(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    charity_id: str
+    charity_name: str
+    total_amount: float = 0
+    donation_count: int = 0
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CreatePaymentRequest(BaseModel):
+    contest_id: str
+    payer_name: str
+    payer_email: str
+    package_id: str = "standard"
+    charity_id: Optional[str] = None
+    charity_percentage: int = Field(10, ge=0, le=50)  # 0-50% to charity
+    origin_url: str
+
+
+class PaymentStatusRequest(BaseModel):
+    session_id: str
+
+
+# Payment Routes
+@api_router.get("/charities")
+async def list_charities():
+    """Get list of supported charities"""
+    # Get pool totals for each charity
+    charities_with_totals = []
+    for charity in CHARITIES:
+        pool = await db.charity_pools.find_one({"charity_id": charity["id"]}, {"_id": 0})
+        charities_with_totals.append({
+            **charity,
+            "total_raised": pool.get("total_amount", 0) if pool else 0,
+            "donation_count": pool.get("donation_count", 0) if pool else 0
+        })
+    
+    # Get overall totals
+    pipeline = [
+        {"$group": {"_id": None, "total": {"$sum": "$total_amount"}, "count": {"$sum": "$donation_count"}}}
+    ]
+    result = await db.charity_pools.aggregate(pipeline).to_list(1)
+    overall = result[0] if result else {"total": 0, "count": 0}
+    
+    return {
+        "charities": charities_with_totals,
+        "total_raised": overall.get("total", 0),
+        "total_donations": overall.get("count", 0)
+    }
+
+
+@api_router.get("/payments/packages")
+async def get_payment_packages():
+    """Get available entry fee packages"""
+    return {"packages": ENTRY_FEE_PACKAGES}
+
+
+@api_router.post("/payments/create-checkout")
+async def create_checkout_session(request: CreatePaymentRequest, http_request: Request):
+    """Create a Stripe checkout session for contest entry fee"""
+    # Validate contest
+    contest = await db.contests.find_one({"id": request.contest_id}, {"_id": 0})
+    if not contest:
+        raise HTTPException(status_code=404, detail="Contest not found")
+    
+    # Validate package
+    if request.package_id not in ENTRY_FEE_PACKAGES:
+        raise HTTPException(status_code=400, detail="Invalid package")
+    
+    package = ENTRY_FEE_PACKAGES[request.package_id]
+    amount = package["amount"]
+    
+    # If free, skip payment
+    if amount == 0:
+        # Create transaction record
+        tx = PaymentTransaction(
+            session_id=f"free-{uuid.uuid4()}",
+            contest_id=request.contest_id,
+            payer_email=request.payer_email,
+            payer_name=request.payer_name,
+            amount=0,
+            status="paid",
+            payment_status="paid"
+        )
+        doc = tx.model_dump()
+        doc['created_at'] = doc['created_at'].isoformat()
+        await db.payment_transactions.insert_one(doc)
+        
+        return {"success": True, "is_free": True, "transaction_id": tx.id}
+    
+    # Calculate charity amount
+    charity_amount = round(amount * (request.charity_percentage / 100), 2)
+    
+    # Validate charity if specified
+    charity_name = None
+    if request.charity_id:
+        charity = next((c for c in CHARITIES if c["id"] == request.charity_id), None)
+        if not charity:
+            raise HTTPException(status_code=400, detail="Invalid charity")
+        charity_name = charity["name"]
+    
+    # Initialize Stripe
+    host_url = str(http_request.base_url).rstrip('/')
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
+    
+    # Build URLs
+    success_url = f"{request.origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{request.origin_url}/contests/{request.contest_id}"
+    
+    # Create checkout session
+    checkout_request = CheckoutSessionRequest(
+        amount=amount,
+        currency="usd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={
+            "contest_id": request.contest_id,
+            "payer_email": request.payer_email,
+            "payer_name": request.payer_name,
+            "charity_id": request.charity_id or "",
+            "charity_amount": str(charity_amount),
+            "package_id": request.package_id
+        }
+    )
+    
+    session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_request)
+    
+    # Create transaction record
+    tx = PaymentTransaction(
+        session_id=session.session_id,
+        contest_id=request.contest_id,
+        payer_email=request.payer_email,
+        payer_name=request.payer_name,
+        amount=amount,
+        charity_id=request.charity_id,
+        charity_amount=charity_amount,
+        status="pending",
+        payment_status="initiated",
+        metadata={
+            "package_id": request.package_id,
+            "charity_name": charity_name,
+            "charity_percentage": request.charity_percentage
+        }
+    )
+    doc = tx.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.payment_transactions.insert_one(doc)
+    
+    return {
+        "success": True,
+        "checkout_url": session.url,
+        "session_id": session.session_id,
+        "amount": amount,
+        "charity_amount": charity_amount
+    }
+
+
+@api_router.get("/payments/status/{session_id}")
+async def get_payment_status(session_id: str, http_request: Request):
+    """Check payment status and update transaction"""
+    # Get transaction
+    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    # If already paid, return cached status
+    if tx.get("status") == "paid":
+        return {
+            "status": "paid",
+            "payment_status": "paid",
+            "amount": tx.get("amount"),
+            "charity_amount": tx.get("charity_amount"),
+            "transaction_id": tx.get("id")
+        }
+    
+    # Check with Stripe
+    host_url = str(http_request.base_url).rstrip('/')
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
+    
+    try:
+        checkout_status: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
+        
+        new_status = "pending"
+        if checkout_status.payment_status == "paid":
+            new_status = "paid"
+        elif checkout_status.status == "expired":
+            new_status = "expired"
+        
+        # Update transaction if status changed
+        if new_status != tx.get("status"):
+            await db.payment_transactions.update_one(
+                {"session_id": session_id},
+                {"$set": {"status": new_status, "payment_status": checkout_status.payment_status}}
+            )
+            
+            # If payment successful, update charity pool
+            if new_status == "paid" and tx.get("charity_id") and tx.get("charity_amount", 0) > 0:
+                charity = next((c for c in CHARITIES if c["id"] == tx["charity_id"]), None)
+                if charity:
+                    await db.charity_pools.update_one(
+                        {"charity_id": tx["charity_id"]},
+                        {
+                            "$inc": {
+                                "total_amount": tx["charity_amount"],
+                                "donation_count": 1
+                            },
+                            "$set": {
+                                "charity_name": charity["name"],
+                                "updated_at": datetime.now(timezone.utc).isoformat()
+                            },
+                            "$setOnInsert": {"id": str(uuid.uuid4())}
+                        },
+                        upsert=True
+                    )
+        
+        return {
+            "status": new_status,
+            "payment_status": checkout_status.payment_status,
+            "amount": tx.get("amount"),
+            "charity_amount": tx.get("charity_amount"),
+            "transaction_id": tx.get("id")
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking payment status: {str(e)}")
+        return {
+            "status": tx.get("status", "pending"),
+            "payment_status": tx.get("payment_status", "unknown"),
+            "amount": tx.get("amount"),
+            "error": str(e)
+        }
+
+
+@api_router.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhooks"""
+    try:
+        body = await request.body()
+        signature = request.headers.get("Stripe-Signature")
+        
+        host_url = str(request.base_url).rstrip('/')
+        webhook_url = f"{host_url}/api/webhook/stripe"
+        stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
+        
+        webhook_response = await stripe_checkout.handle_webhook(body, signature)
+        
+        # Update transaction based on webhook
+        if webhook_response.session_id:
+            new_status = "pending"
+            if webhook_response.payment_status == "paid":
+                new_status = "paid"
+            
+            tx = await db.payment_transactions.find_one(
+                {"session_id": webhook_response.session_id},
+                {"_id": 0}
+            )
+            
+            if tx and tx.get("status") != "paid":
+                await db.payment_transactions.update_one(
+                    {"session_id": webhook_response.session_id},
+                    {"$set": {"status": new_status, "payment_status": webhook_response.payment_status}}
+                )
+                
+                # Update charity pool if paid
+                if new_status == "paid" and tx.get("charity_id") and tx.get("charity_amount", 0) > 0:
+                    charity = next((c for c in CHARITIES if c["id"] == tx["charity_id"]), None)
+                    if charity:
+                        await db.charity_pools.update_one(
+                            {"charity_id": tx["charity_id"]},
+                            {
+                                "$inc": {"total_amount": tx["charity_amount"], "donation_count": 1},
+                                "$set": {"charity_name": charity["name"], "updated_at": datetime.now(timezone.utc).isoformat()},
+                                "$setOnInsert": {"id": str(uuid.uuid4())}
+                            },
+                            upsert=True
+                        )
+        
+        return {"received": True}
+    except Exception as e:
+        logger.error(f"Webhook error: {str(e)}")
+        return {"received": True, "error": str(e)}
+
+
+@api_router.get("/payments/history")
+async def get_payment_history(email: Optional[str] = None, contest_id: Optional[str] = None):
+    """Get payment history"""
+    query = {}
+    if email:
+        query["payer_email"] = email
+    if contest_id:
+        query["contest_id"] = contest_id
+    
+    transactions = await db.payment_transactions.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"transactions": transactions}
+
+
 # Include the router in the main app
 app.include_router(api_router)
 
