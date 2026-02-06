@@ -659,6 +659,13 @@ def main():
     tester.test_admin_export_csv()
     tester.test_admin_delete_entry()
     
+    print("\n🏆 Testing Leaderboard Functionality...")
+    tester.test_leaderboard_endpoint()
+    tester.test_leaderboard_with_limit()
+    tester.test_position_lookup()
+    tester.test_position_lookup_nonexistent()
+    tester.test_waitlist_response_includes_position()
+    
     # Print final results
     print("\n" + "=" * 50)
     print(f"📊 Final Results: {tester.tests_passed}/{tester.tests_run} tests passed")
