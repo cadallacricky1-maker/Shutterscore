@@ -718,6 +718,525 @@ class ShutterscoreAPITester:
         self.admin_auth_header = temp_auth
         return success
 
+    # ============================================
+    # JUDGING SYSTEM TESTS
+    # ============================================
+    
+    def test_create_contest(self):
+        """Test creating a new contest (admin only)"""
+        from datetime import datetime, timedelta
+        
+        end_date = (datetime.now() + timedelta(days=30)).isoformat()
+        contest_data = {
+            "title": "Test Photography Contest",
+            "description": "A test contest for API testing",
+            "theme": "Nature Photography",
+            "prize_amount": 500.0,
+            "entry_fee": 0.0,
+            "end_date": end_date
+        }
+        
+        success, response = self.run_test(
+            "Create Contest",
+            "POST",
+            "contests",
+            200,
+            data=contest_data,
+            auth_required=True,
+            expected_response_keys=["id", "title", "theme", "status"]
+        )
+        
+        if success:
+            self.test_contest_id = response.get('id')
+            print(f"   Created contest ID: {self.test_contest_id}")
+        
+        return success
+    
+    def test_create_contest_no_auth(self):
+        """Test creating contest without admin auth"""
+        from datetime import datetime, timedelta
+        
+        # Temporarily remove auth header
+        temp_auth = self.admin_auth_header
+        self.admin_auth_header = None
+        
+        end_date = (datetime.now() + timedelta(days=30)).isoformat()
+        contest_data = {
+            "title": "Unauthorized Contest",
+            "description": "Should fail",
+            "theme": "Test",
+            "end_date": end_date
+        }
+        
+        success = self.run_test(
+            "Create Contest - No Auth",
+            "POST",
+            "contests",
+            401,
+            data=contest_data
+        )
+        
+        # Restore auth header
+        self.admin_auth_header = temp_auth
+        return success
+    
+    def test_list_contests(self):
+        """Test listing all contests"""
+        success, response = self.run_test(
+            "List All Contests",
+            "GET",
+            "contests",
+            200,
+            expected_response_keys=["contests"]
+        )
+        
+        if success:
+            contests = response.get('contests', [])
+            print(f"   Found {len(contests)} contests")
+            
+            if contests:
+                first_contest = contests[0]
+                required_fields = ['id', 'title', 'description', 'theme', 'status']
+                for field in required_fields:
+                    if field in first_contest:
+                        print(f"   ✓ Contest has {field} field")
+                    else:
+                        print(f"   ⚠️  Contest missing {field} field")
+                        success = False
+        
+        return success
+    
+    def test_list_contests_by_status(self):
+        """Test listing contests by status"""
+        return self.run_test(
+            "List Active Contests",
+            "GET",
+            "contests?status=active",
+            200,
+            expected_response_keys=["contests"]
+        )
+    
+    def test_get_contest_detail(self):
+        """Test getting contest details"""
+        if not hasattr(self, 'test_contest_id') or not self.test_contest_id:
+            print("   ⚠️  No test contest ID available, skipping")
+            return True
+        
+        success, response = self.run_test(
+            "Get Contest Detail",
+            "GET",
+            f"contests/{self.test_contest_id}",
+            200,
+            expected_response_keys=["id", "title", "theme", "photo_count", "judged_count"]
+        )
+        
+        if success:
+            photo_count = response.get('photo_count', 0)
+            judged_count = response.get('judged_count', 0)
+            print(f"   Photo count: {photo_count}")
+            print(f"   Judged count: {judged_count}")
+        
+        return success
+    
+    def test_submit_photo(self):
+        """Test submitting a photo to contest"""
+        if not hasattr(self, 'test_contest_id') or not self.test_contest_id:
+            print("   ⚠️  No test contest ID available, skipping")
+            return True
+        
+        photo_data = {
+            "contest_id": self.test_contest_id,
+            "photographer_name": "Test Photographer",
+            "photographer_email": "photographer@example.com",
+            "photo_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4",
+            "title": "Beautiful Mountain Landscape",
+            "description": "A stunning mountain view for testing"
+        }
+        
+        success, response = self.run_test(
+            "Submit Photo Entry",
+            "POST",
+            "photos",
+            200,
+            data=photo_data,
+            expected_response_keys=["id", "contest_id", "title", "status"]
+        )
+        
+        if success:
+            self.test_photo_id = response.get('id')
+            print(f"   Created photo ID: {self.test_photo_id}")
+            
+            # Verify initial status is pending
+            status = response.get('status')
+            if status == 'pending':
+                print("   ✓ Photo status correctly set to pending")
+            else:
+                print(f"   ⚠️  Expected status 'pending', got '{status}'")
+                success = False
+        
+        return success
+    
+    def test_submit_photo_invalid_contest(self):
+        """Test submitting photo to non-existent contest"""
+        photo_data = {
+            "contest_id": "non-existent-contest-id",
+            "photographer_name": "Test Photographer",
+            "photographer_email": "photographer@example.com",
+            "photo_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4",
+            "title": "Should Fail"
+        }
+        
+        return self.run_test(
+            "Submit Photo - Invalid Contest",
+            "POST",
+            "photos",
+            404,
+            data=photo_data
+        )
+    
+    def test_list_photos(self):
+        """Test listing photo entries"""
+        success, response = self.run_test(
+            "List All Photos",
+            "GET",
+            "photos",
+            200,
+            expected_response_keys=["photos"]
+        )
+        
+        if success:
+            photos = response.get('photos', [])
+            print(f"   Found {len(photos)} photos")
+            
+            if photos:
+                first_photo = photos[0]
+                required_fields = ['id', 'contest_id', 'title', 'photographer_name', 'status']
+                for field in required_fields:
+                    if field in first_photo:
+                        print(f"   ✓ Photo has {field} field")
+                    else:
+                        print(f"   ⚠️  Photo missing {field} field")
+                        success = False
+        
+        return success
+    
+    def test_list_photos_by_contest(self):
+        """Test listing photos by contest"""
+        if not hasattr(self, 'test_contest_id') or not self.test_contest_id:
+            print("   ⚠️  No test contest ID available, skipping")
+            return True
+        
+        return self.run_test(
+            "List Photos by Contest",
+            "GET",
+            f"photos?contest_id={self.test_contest_id}",
+            200,
+            expected_response_keys=["photos"]
+        )
+    
+    def test_get_photo_detail(self):
+        """Test getting photo details"""
+        if not hasattr(self, 'test_photo_id') or not self.test_photo_id:
+            print("   ⚠️  No test photo ID available, skipping")
+            return True
+        
+        success, response = self.run_test(
+            "Get Photo Detail",
+            "GET",
+            f"photos/{self.test_photo_id}",
+            200,
+            expected_response_keys=["id", "title", "contest", "scores"]
+        )
+        
+        if success:
+            scores = response.get('scores', [])
+            contest = response.get('contest')
+            print(f"   Photo has {len(scores)} scores")
+            if contest:
+                print(f"   Contest info included: {contest.get('title', 'Unknown')}")
+        
+        return success
+    
+    def test_ai_score_generation(self):
+        """Test AI score generation"""
+        ai_request = {
+            "photo_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4",
+            "contest_theme": "Nature Photography"
+        }
+        
+        success, response = self.run_test(
+            "Generate AI Scores",
+            "POST",
+            "judge/ai-score",
+            200,
+            data=ai_request,
+            expected_response_keys=["scores", "comments", "weighted_total", "normalized_score"]
+        )
+        
+        if success:
+            scores = response.get('scores', {})
+            weighted_total = response.get('weighted_total', 0)
+            normalized_score = response.get('normalized_score', 0)
+            comments = response.get('comments', '')
+            
+            print(f"   AI Scores: {scores}")
+            print(f"   Weighted total: {weighted_total}")
+            print(f"   Normalized score: {normalized_score}")
+            print(f"   Comments length: {len(comments)} chars")
+            
+            # Validate score ranges
+            required_criteria = ['creativity', 'composition', 'theme_fit', 'impact']
+            for criterion in required_criteria:
+                score = scores.get(criterion, -1)
+                if 0 <= score <= 10:
+                    print(f"   ✓ {criterion}: {score} (valid range)")
+                else:
+                    print(f"   ⚠️  {criterion}: {score} (invalid range)")
+                    success = False
+            
+            # Validate weighted total (should be 0-100)
+            if 0 <= weighted_total <= 100:
+                print(f"   ✓ Weighted total in valid range: {weighted_total}")
+            else:
+                print(f"   ⚠️  Weighted total out of range: {weighted_total}")
+                success = False
+            
+            # Validate normalized score (should be 0-40)
+            if 0 <= normalized_score <= 40:
+                print(f"   ✓ Normalized score in valid range: {normalized_score}")
+            else:
+                print(f"   ⚠️  Normalized score out of range: {normalized_score}")
+                success = False
+        
+        return success
+    
+    def test_submit_manual_score(self):
+        """Test submitting manual judge score"""
+        if not hasattr(self, 'test_photo_id') or not self.test_photo_id:
+            print("   ⚠️  No test photo ID available, skipping")
+            return True
+        
+        score_data = {
+            "photo_id": self.test_photo_id,
+            "judge_name": "Test Judge",
+            "judge_email": "judge@example.com",
+            "scores": {
+                "creativity": 8.5,
+                "composition": 7.0,
+                "theme_fit": 9.0,
+                "impact": 6.5
+            },
+            "comments": "Great composition and excellent theme fit. Could use more creative elements.",
+            "is_ai_generated": False
+        }
+        
+        success, response = self.run_test(
+            "Submit Manual Score",
+            "POST",
+            "judge/submit",
+            200,
+            data=score_data,
+            expected_response_keys=["id", "photo_id", "weighted_total", "normalized_score"]
+        )
+        
+        if success:
+            weighted_total = response.get('weighted_total', 0)
+            normalized_score = response.get('normalized_score', 0)
+            print(f"   Judge score weighted total: {weighted_total}")
+            print(f"   Judge score normalized: {normalized_score}")
+            
+            # Store for duplicate test
+            self.test_judge_email = score_data['judge_email']
+        
+        return success
+    
+    def test_submit_duplicate_score(self):
+        """Test submitting duplicate score from same judge"""
+        if not hasattr(self, 'test_photo_id') or not self.test_photo_id:
+            print("   ⚠️  No test photo ID available, skipping")
+            return True
+        
+        if not hasattr(self, 'test_judge_email'):
+            print("   ⚠️  No test judge email available, skipping")
+            return True
+        
+        score_data = {
+            "photo_id": self.test_photo_id,
+            "judge_name": "Test Judge",
+            "judge_email": self.test_judge_email,
+            "scores": {
+                "creativity": 5.0,
+                "composition": 5.0,
+                "theme_fit": 5.0,
+                "impact": 5.0
+            },
+            "comments": "Duplicate attempt",
+            "is_ai_generated": False
+        }
+        
+        return self.run_test(
+            "Submit Duplicate Score",
+            "POST",
+            "judge/submit",
+            400,
+            data=score_data
+        )
+    
+    def test_get_pending_photos(self):
+        """Test getting pending photos for judging"""
+        success, response = self.run_test(
+            "Get Pending Photos",
+            "GET",
+            "judge/pending",
+            200,
+            expected_response_keys=["photos", "count"]
+        )
+        
+        if success:
+            photos = response.get('photos', [])
+            count = response.get('count', 0)
+            print(f"   Pending photos: {count}")
+            
+            if photos:
+                first_photo = photos[0]
+                if 'contest_title' in first_photo and 'contest_theme' in first_photo:
+                    print("   ✓ Photos enriched with contest info")
+                else:
+                    print("   ⚠️  Photos missing contest enrichment")
+                    success = False
+        
+        return success
+    
+    def test_get_pending_photos_filtered(self):
+        """Test getting pending photos filtered by judge"""
+        return self.run_test(
+            "Get Pending Photos - Filtered by Judge",
+            "GET",
+            "judge/pending?judge_email=newjudge@example.com",
+            200,
+            expected_response_keys=["photos", "count"]
+        )
+    
+    def test_get_judge_stats(self):
+        """Test getting judge statistics"""
+        success, response = self.run_test(
+            "Get Judge Stats",
+            "GET",
+            "judge/stats",
+            200,
+            expected_response_keys=["total_pending", "total_judged", "active_contests"]
+        )
+        
+        if success:
+            total_pending = response.get('total_pending', 0)
+            total_judged = response.get('total_judged', 0)
+            active_contests = response.get('active_contests', 0)
+            
+            print(f"   Total pending: {total_pending}")
+            print(f"   Total judged: {total_judged}")
+            print(f"   Active contests: {active_contests}")
+        
+        return success
+    
+    def test_get_judge_stats_with_email(self):
+        """Test getting judge stats with judge email"""
+        if not hasattr(self, 'test_judge_email'):
+            print("   ⚠️  No test judge email available, skipping")
+            return True
+        
+        success, response = self.run_test(
+            "Get Judge Stats with Email",
+            "GET",
+            f"judge/stats?judge_email={self.test_judge_email}",
+            200,
+            expected_response_keys=["total_pending", "total_judged", "active_contests", "my_judgments", "my_points"]
+        )
+        
+        if success:
+            my_judgments = response.get('my_judgments', 0)
+            my_points = response.get('my_points', 0)
+            
+            print(f"   My judgments: {my_judgments}")
+            print(f"   My points: {my_points}")
+            
+            # Validate points calculation (5 points per judgment)
+            expected_points = my_judgments * 5
+            if my_points == expected_points:
+                print(f"   ✓ Points calculation correct: {my_points}")
+            else:
+                print(f"   ⚠️  Points calculation incorrect. Expected: {expected_points}, Got: {my_points}")
+                success = False
+        
+        return success
+    
+    def test_get_contest_leaderboard(self):
+        """Test getting contest leaderboard"""
+        if not hasattr(self, 'test_contest_id') or not self.test_contest_id:
+            print("   ⚠️  No test contest ID available, skipping")
+            return True
+        
+        success, response = self.run_test(
+            "Get Contest Leaderboard",
+            "GET",
+            f"contests/{self.test_contest_id}/leaderboard",
+            200,
+            expected_response_keys=["leaderboard"]
+        )
+        
+        if success:
+            leaderboard = response.get('leaderboard', [])
+            print(f"   Leaderboard entries: {len(leaderboard)}")
+            
+            if leaderboard:
+                first_entry = leaderboard[0]
+                required_fields = ['rank', 'photo_id', 'title', 'photographer_name', 'total_score', 'judge_count']
+                for field in required_fields:
+                    if field in first_entry:
+                        print(f"   ✓ Leaderboard entry has {field}")
+                    else:
+                        print(f"   ⚠️  Leaderboard entry missing {field}")
+                        success = False
+                
+                # Check if entries are sorted by score (descending)
+                if len(leaderboard) > 1:
+                    first_score = leaderboard[0].get('total_score', 0)
+                    second_score = leaderboard[1].get('total_score', 0)
+                    if first_score >= second_score:
+                        print("   ✓ Leaderboard properly sorted by score")
+                    else:
+                        print("   ⚠️  Leaderboard not sorted correctly")
+        
+        return success
+    
+    def test_update_contest_status(self):
+        """Test updating contest status (admin only)"""
+        if not hasattr(self, 'test_contest_id') or not self.test_contest_id:
+            print("   ⚠️  No test contest ID available, skipping")
+            return True
+        
+        return self.run_test(
+            "Update Contest Status",
+            "PATCH",
+            f"contests/{self.test_contest_id}/status?status=judging",
+            200,
+            auth_required=True,
+            expected_response_keys=["success", "message"]
+        )
+    
+    def test_update_contest_status_invalid(self):
+        """Test updating contest with invalid status"""
+        if not hasattr(self, 'test_contest_id') or not self.test_contest_id:
+            print("   ⚠️  No test contest ID available, skipping")
+            return True
+        
+        return self.run_test(
+            "Update Contest Status - Invalid",
+            "PATCH",
+            f"contests/{self.test_contest_id}/status?status=invalid_status",
+            400,
+            auth_required=True
+        )
+
 def main():
     print("🚀 Starting Shutterscore API Tests...")
     print("=" * 50)
