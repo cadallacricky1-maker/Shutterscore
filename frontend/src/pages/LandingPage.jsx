@@ -158,7 +158,20 @@ export default function LandingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [hasJoinedWaitlist, setHasJoinedWaitlist] = useState(false);
+  const [referralLink, setReferralLink] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const featuresRef = useRef(null);
+  const [searchParams] = useSearchParams();
+
+  // Get referral code from URL
+  const refCode = searchParams.get("ref");
+
+  // Show referral badge if came from referral link
+  useEffect(() => {
+    if (refCode) {
+      toast.info("You were referred by a friend! Sign up to join them.", { duration: 5000 });
+    }
+  }, [refCode]);
 
   const scrollToFeatures = () => {
     featuresRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -189,11 +202,23 @@ export default function LandingPage() {
 
     setIsSubmitting(true);
     try {
-      const response = await axios.post(`${API}/waitlist`, { email: trimmedEmail });
+      const payload = { email: trimmedEmail };
+      if (refCode) payload.ref = refCode;
+      
+      const response = await axios.post(`${API}/waitlist`, payload);
       if (response.data.success) {
         toast.success(response.data.message);
         setEmail("");
         setHasJoinedWaitlist(true);
+        
+        // Store referral info
+        if (response.data.referral_link) {
+          setReferralLink(response.data.referral_link);
+        }
+        if (response.data.entry?.referral_code) {
+          setReferralCode(response.data.entry.referral_code);
+        }
+        
         // Show share modal after successful signup
         setTimeout(() => setShowShareModal(true), 500);
       }
