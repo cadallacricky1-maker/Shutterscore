@@ -760,6 +760,13 @@ def main():
     tester.test_position_lookup_nonexistent()
     tester.test_waitlist_response_includes_position()
     
+    print("\n📊 Testing Social Proof Features...")
+    tester.test_social_proof_stats()
+    
+    print("\n📧 Testing Weekly Digest Features...")
+    tester.test_weekly_digest_send()
+    tester.test_weekly_digest_no_auth()
+    
     # Print final results
     print("\n" + "=" * 50)
     print(f"📊 Final Results: {tester.tests_passed}/{tester.tests_run} tests passed")
