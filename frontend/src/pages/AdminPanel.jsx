@@ -354,7 +354,7 @@ export default function AdminPanel() {
               <p className="text-gray-400">Manage your waitlist signups</p>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Button
               onClick={() => { fetchStats(); fetchEntries(); }}
               variant="outline"
@@ -363,6 +363,15 @@ export default function AdminPanel() {
             >
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
+            </Button>
+            <Button
+              onClick={handleSendWeeklyDigest}
+              variant="outline"
+              className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+              data-testid="weekly-digest-btn"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              Send Weekly Digest
             </Button>
             <Button
               onClick={handleExport}
