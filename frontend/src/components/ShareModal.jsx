@@ -10,21 +10,25 @@ import {
   Mail,
   Check,
   Share2,
+  Gift,
 } from "lucide-react";
 import { Button } from "./ui/button";
 
-const SHARE_URL = typeof window !== "undefined" ? window.location.origin : "https://shutterscore.com";
+const DEFAULT_URL = typeof window !== "undefined" ? window.location.origin : "https://shutterscore.com";
 const SHARE_TEXT = "I just joined the Shutterscore waitlist! Run photo contests that inspire — and give back. Join me:";
 const SHARE_TITLE = "Shutterscore — Photo Contests That Inspire & Give Back";
 
-export default function ShareModal({ isOpen, onClose }) {
+export default function ShareModal({ isOpen, onClose, referralLink, referralCode }) {
   const [copied, setCopied] = useState(false);
+  
+  // Use referral link if provided, otherwise use default
+  const shareUrl = referralLink || DEFAULT_URL;
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(SHARE_URL);
+      await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
-      toast.success("Link copied to clipboard!");
+      toast.success("Referral link copied to clipboard!");
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
       toast.error("Failed to copy link");
@@ -36,25 +40,25 @@ export default function ShareModal({ isOpen, onClose }) {
       name: "Twitter",
       icon: Twitter,
       color: "bg-[#1DA1F2]/20 text-[#1DA1F2] hover:bg-[#1DA1F2]/30",
-      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(SHARE_TEXT)}&url=${encodeURIComponent(SHARE_URL)}`,
+      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(SHARE_TEXT)}&url=${encodeURIComponent(shareUrl)}`,
     },
     {
       name: "Facebook",
       icon: Facebook,
       color: "bg-[#4267B2]/20 text-[#4267B2] hover:bg-[#4267B2]/30",
-      url: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(SHARE_URL)}&quote=${encodeURIComponent(SHARE_TEXT)}`,
+      url: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(SHARE_TEXT)}`,
     },
     {
       name: "LinkedIn",
       icon: Linkedin,
       color: "bg-[#0A66C2]/20 text-[#0A66C2] hover:bg-[#0A66C2]/30",
-      url: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(SHARE_URL)}`,
+      url: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`,
     },
     {
       name: "Email",
       icon: Mail,
       color: "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30",
-      url: `mailto:?subject=${encodeURIComponent(SHARE_TITLE)}&body=${encodeURIComponent(SHARE_TEXT + " " + SHARE_URL)}`,
+      url: `mailto:?subject=${encodeURIComponent(SHARE_TITLE)}&body=${encodeURIComponent(SHARE_TEXT + " " + shareUrl)}`,
     },
   ];
 
@@ -97,9 +101,9 @@ export default function ShareModal({ isOpen, onClose }) {
                       className="text-xl font-semibold text-white"
                       style={{ fontFamily: "'Cormorant Garamond', serif" }}
                     >
-                      Share with Friends
+                      Share & Move Up!
                     </h3>
-                    <p className="text-sm text-gray-400">Help spread the word!</p>
+                    <p className="text-sm text-gray-400">Every referral boosts your spot</p>
                   </div>
                 </div>
                 <button
@@ -110,6 +114,19 @@ export default function ShareModal({ isOpen, onClose }) {
                   <X className="w-5 h-5" />
                 </button>
               </div>
+
+              {/* Referral Code Badge */}
+              {referralCode && (
+                <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="flex items-center gap-3">
+                    <Gift className="w-5 h-5 text-emerald-400" />
+                    <div>
+                      <p className="text-sm text-emerald-400">Your Referral Code</p>
+                      <p className="text-xl font-mono font-bold text-white">{referralCode}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Share Buttons */}
               <div className="grid grid-cols-2 gap-3 mb-6">
@@ -128,10 +145,10 @@ export default function ShareModal({ isOpen, onClose }) {
 
               {/* Copy Link */}
               <div className="space-y-2">
-                <label className="text-sm text-gray-400">Or copy link</label>
+                <label className="text-sm text-gray-400">Or copy your unique referral link</label>
                 <div className="flex gap-2">
                   <div className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-gray-300 text-sm truncate">
-                    {SHARE_URL}
+                    {shareUrl}
                   </div>
                   <Button
                     onClick={handleCopy}
@@ -150,6 +167,11 @@ export default function ShareModal({ isOpen, onClose }) {
                   </Button>
                 </div>
               </div>
+
+              {/* Info text */}
+              <p className="mt-4 text-xs text-gray-500 text-center">
+                Friends who sign up using your link will be tracked automatically
+              </p>
             </div>
           </motion.div>
         </>
