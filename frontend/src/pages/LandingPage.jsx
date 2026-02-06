@@ -474,7 +474,12 @@ export default function LandingPage() {
       </footer>
 
       {/* Share Modal */}
-      <ShareModal isOpen={showShareModal} onClose={() => setShowShareModal(false)} />
+      <ShareModal 
+        isOpen={showShareModal} 
+        onClose={() => setShowShareModal(false)} 
+        referralLink={referralLink}
+        referralCode={referralCode}
+      />
     </main>
   );
 }
