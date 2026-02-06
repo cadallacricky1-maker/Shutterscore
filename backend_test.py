@@ -322,8 +322,26 @@ class ShutterscoreAPITester:
             "GET",
             "admin/waitlist/stats",
             200,
-            expected_response_keys=["total_signups", "today_signups", "this_week_signups"]
+            auth_required=True,
+            expected_response_keys=["total_signups", "today_signups", "this_week_signups", "total_referrals"]
         )
+
+    def test_admin_waitlist_stats_no_auth(self):
+        """Test admin stats without authentication"""
+        # Temporarily remove auth header
+        temp_auth = self.admin_auth_header
+        self.admin_auth_header = None
+        
+        success = self.run_test(
+            "Admin Stats - No Auth",
+            "GET",
+            "admin/waitlist/stats",
+            401
+        )
+        
+        # Restore auth header
+        self.admin_auth_header = temp_auth
+        return success
 
     def test_admin_waitlist_entries(self):
         """Test admin waitlist entries endpoint"""
@@ -332,12 +350,24 @@ class ShutterscoreAPITester:
             "GET",
             "admin/waitlist?page=1&page_size=10",
             200,
+            auth_required=True,
             expected_response_keys=["entries", "total", "page", "page_size", "total_pages"]
         )
         
         if success:
             print(f"   Total entries: {response.get('total', 0)}")
             print(f"   Entries on page: {len(response.get('entries', []))}")
+            
+            # Check if entries have referral fields
+            entries = response.get('entries', [])
+            if entries:
+                first_entry = entries[0]
+                if 'referral_code' in first_entry:
+                    print("   ✓ Referral code field present in entries")
+                if 'referred_by' in first_entry:
+                    print("   ✓ Referred by field present in entries")
+                if 'referral_count' in first_entry:
+                    print("   ✓ Referral count field present in entries")
         
         return success
 
@@ -348,6 +378,7 @@ class ShutterscoreAPITester:
             "GET",
             "admin/waitlist?search=test&page=1&page_size=10",
             200,
+            auth_required=True,
             expected_response_keys=["entries", "total", "page", "page_size", "total_pages"]
         )
 
@@ -355,6 +386,10 @@ class ShutterscoreAPITester:
         """Test admin CSV export"""
         url = f"{self.api_url}/admin/waitlist/export"
         headers = {'Content-Type': 'application/json'}
+        
+        # Add auth header
+        if self.admin_auth_header:
+            headers.update(self.admin_auth_header)
         
         self.tests_run += 1
         print(f"\n🔍 Testing Admin CSV Export...")
@@ -377,7 +412,16 @@ class ShutterscoreAPITester:
                 lines = csv_content.split('\n')
                 print(f"   CSV lines: {len(lines)}")
                 if lines and len(lines) > 0:
-                    print(f"   CSV header: {lines[0]}")
+                    header = lines[0]
+                    print(f"   CSV header: {header}")
+                    
+                    # Check for referral columns
+                    if 'Referral Code' in header:
+                        print("   ✓ Referral Code column present")
+                    if 'Referred By' in header:
+                        print("   ✓ Referred By column present")
+                    if 'Referral Count' in header:
+                        print("   ✓ Referral Count column present")
                 
             else:
                 print(f"❌ Failed - Expected 200, got {response.status_code}")
@@ -414,6 +458,7 @@ class ShutterscoreAPITester:
             "DELETE",
             f"admin/waitlist/{entry_id}",
             200,
+            auth_required=True,
             expected_response_keys=["success", "message"]
         )
         
@@ -425,7 +470,8 @@ class ShutterscoreAPITester:
             "Delete Non-existent Entry",
             "DELETE",
             "admin/waitlist/non-existent-id",
-            404
+            404,
+            auth_required=True
         )
         
         return success and success_404
