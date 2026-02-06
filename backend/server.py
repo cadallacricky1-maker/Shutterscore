@@ -1,5 +1,6 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Header
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -8,11 +9,14 @@ import logging
 import re
 import io
 import csv
+import secrets
+import asyncio
+import resend
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 ROOT_DIR = Path(__file__).parent
@@ -23,11 +27,40 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# Resend setup
+resend.api_key = os.environ.get('RESEND_API_KEY', '')
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
+
+# Admin password
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
+
 # Create the main app without a prefix
 app = FastAPI()
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
+
+# Security
+security = HTTPBasic()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+# Admin authentication
+def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
+    if not correct_password:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 
 # Define Models
@@ -42,16 +75,20 @@ class StatusCheckCreate(BaseModel):
     client_name: str
 
 
-# Waitlist Models
+# Waitlist Models with Referral
 class WaitlistEntry(BaseModel):
     model_config = ConfigDict(extra="ignore")
     
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     email: str
+    referral_code: str = Field(default_factory=lambda: str(uuid.uuid4())[:8].upper())
+    referred_by: Optional[str] = None
+    referral_count: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class WaitlistCreate(BaseModel):
     email: str
+    ref: Optional[str] = None  # Referral code from URL
     
     @field_validator('email')
     @classmethod
@@ -65,6 +102,7 @@ class WaitlistResponse(BaseModel):
     success: bool
     message: str
     entry: Optional[WaitlistEntry] = None
+    referral_link: Optional[str] = None
 
 
 class WaitlistListResponse(BaseModel):
@@ -79,6 +117,83 @@ class WaitlistStats(BaseModel):
     total_signups: int
     today_signups: int
     this_week_signups: int
+    total_referrals: int
+
+
+class AdminLoginRequest(BaseModel):
+    password: str
+
+
+class AdminLoginResponse(BaseModel):
+    success: bool
+    message: str
+
+
+# Email sending function
+async def send_welcome_email(email: str, referral_code: str, referral_link: str):
+    """Send welcome email to new waitlist signup"""
+    try:
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+        </head>
+        <body style="font-family: Arial, sans-serif; background-color: #050505; color: #ffffff; padding: 40px; margin: 0;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #0A0A0A; border-radius: 16px; padding: 40px; border: 1px solid #27272A;">
+                <div style="text-align: center; margin-bottom: 32px;">
+                    <h1 style="font-size: 36px; margin: 0; color: #ffffff;">
+                        Shutter<span style="color: #7C3AED;">score</span>
+                    </h1>
+                </div>
+                
+                <h2 style="color: #ffffff; font-size: 24px; margin-bottom: 16px;">Welcome to the Waitlist! 🎉</h2>
+                
+                <p style="color: #A1A1AA; font-size: 16px; line-height: 1.6;">
+                    Thanks for joining Shutterscore! You're now on the list for early access to our photo contest platform.
+                </p>
+                
+                <p style="color: #A1A1AA; font-size: 16px; line-height: 1.6;">
+                    Want to move up the waitlist? Share your unique referral link with friends:
+                </p>
+                
+                <div style="background-color: #121212; border-radius: 8px; padding: 16px; margin: 24px 0; text-align: center;">
+                    <p style="color: #7C3AED; font-size: 14px; margin: 0 0 8px 0;">Your Referral Link</p>
+                    <a href="{referral_link}" style="color: #ffffff; font-size: 16px; word-break: break-all;">{referral_link}</a>
+                </div>
+                
+                <p style="color: #A1A1AA; font-size: 14px; line-height: 1.6;">
+                    Your referral code: <strong style="color: #10B981;">{referral_code}</strong>
+                </p>
+                
+                <p style="color: #A1A1AA; font-size: 16px; line-height: 1.6;">
+                    Every friend who joins using your link moves you up the list!
+                </p>
+                
+                <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #27272A; text-align: center;">
+                    <p style="color: #52525B; font-size: 12px; margin: 0;">
+                        © 2026 Shutterscore. Photo contests with purpose.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        params = {
+            "from": SENDER_EMAIL,
+            "to": [email],
+            "subject": "Welcome to Shutterscore! 📷 Your Early Access Awaits",
+            "html": html_content
+        }
+        
+        # Run sync SDK in thread to keep FastAPI non-blocking
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"Welcome email sent to {email}, ID: {result.get('id', 'unknown')}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send welcome email to {email}: {str(e)}")
+        return False
 
 
 # Status Routes
@@ -114,27 +229,52 @@ async def join_waitlist(input: WaitlistCreate):
     # Check if email already exists
     existing = await db.waitlist.find_one({"email": input.email}, {"_id": 0})
     if existing:
+        referral_link = f"https://shutterscore.com/?ref={existing.get('referral_code', '')}"
         return WaitlistResponse(
             success=True,
             message="You're already on the waitlist! We'll notify you soon.",
-            entry=WaitlistEntry(**existing) if isinstance(existing.get('created_at'), datetime) else WaitlistEntry(
+            entry=WaitlistEntry(
                 id=existing['id'],
                 email=existing['email'],
+                referral_code=existing.get('referral_code', ''),
+                referred_by=existing.get('referred_by'),
+                referral_count=existing.get('referral_count', 0),
                 created_at=datetime.fromisoformat(existing['created_at']) if isinstance(existing['created_at'], str) else existing['created_at']
-            )
+            ),
+            referral_link=referral_link
         )
     
+    # Check if referral code exists and update referrer's count
+    referred_by = None
+    if input.ref:
+        referrer = await db.waitlist.find_one({"referral_code": input.ref.upper()}, {"_id": 0})
+        if referrer:
+            referred_by = input.ref.upper()
+            # Increment referrer's count
+            await db.waitlist.update_one(
+                {"referral_code": input.ref.upper()},
+                {"$inc": {"referral_count": 1}}
+            )
+            logger.info(f"Referral credited to {referrer['email']}")
+    
     # Create new entry
-    entry = WaitlistEntry(email=input.email)
+    entry = WaitlistEntry(email=input.email, referred_by=referred_by)
     doc = entry.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     
     await db.waitlist.insert_one(doc)
     
+    # Generate referral link
+    referral_link = f"https://shutterscore.com/?ref={entry.referral_code}"
+    
+    # Send welcome email (non-blocking)
+    asyncio.create_task(send_welcome_email(input.email, entry.referral_code, referral_link))
+    
     return WaitlistResponse(
         success=True,
-        message="Welcome to the waitlist! We'll be in touch soon.",
-        entry=entry
+        message="Welcome to the waitlist! Check your email for your referral link.",
+        entry=entry,
+        referral_link=referral_link
     )
 
 @api_router.get("/waitlist/count")
@@ -143,12 +283,26 @@ async def get_waitlist_count():
     return {"count": count}
 
 
-# Admin Routes
+# Admin Auth Routes
+@api_router.post("/admin/login", response_model=AdminLoginResponse)
+async def admin_login(request: AdminLoginRequest):
+    if secrets.compare_digest(request.password, ADMIN_PASSWORD):
+        return AdminLoginResponse(success=True, message="Login successful")
+    raise HTTPException(status_code=401, detail="Invalid password")
+
+
+@api_router.get("/admin/verify")
+async def verify_admin_session(admin: str = Depends(verify_admin)):
+    return {"authenticated": True, "user": admin}
+
+
+# Admin Routes (Protected)
 @api_router.get("/admin/waitlist", response_model=WaitlistListResponse)
 async def get_waitlist_entries(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    admin: str = Depends(verify_admin)
 ):
     # Build query
     query = {}
@@ -181,7 +335,7 @@ async def get_waitlist_entries(
 
 
 @api_router.get("/admin/waitlist/stats", response_model=WaitlistStats)
-async def get_waitlist_stats():
+async def get_waitlist_stats(admin: str = Depends(verify_admin)):
     # Total signups
     total = await db.waitlist.count_documents({})
     
@@ -192,34 +346,48 @@ async def get_waitlist_stats():
     })
     
     # This week's signups (last 7 days)
-    from datetime import timedelta
     week_start = today_start - timedelta(days=7)
     week_count = await db.waitlist.count_documents({
         "created_at": {"$gte": week_start.isoformat()}
     })
     
+    # Total referrals
+    pipeline = [
+        {"$group": {"_id": None, "total_referrals": {"$sum": "$referral_count"}}}
+    ]
+    result = await db.waitlist.aggregate(pipeline).to_list(1)
+    total_referrals = result[0]["total_referrals"] if result else 0
+    
     return WaitlistStats(
         total_signups=total,
         today_signups=today_count,
-        this_week_signups=week_count
+        this_week_signups=week_count,
+        total_referrals=total_referrals
     )
 
 
 @api_router.get("/admin/waitlist/export")
-async def export_waitlist():
+async def export_waitlist(admin: str = Depends(verify_admin)):
     # Get all entries
     entries = await db.waitlist.find({}, {"_id": 0}).sort("created_at", -1).to_list(10000)
     
     # Create CSV in memory
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Email", "Signed Up At", "ID"])
+    writer.writerow(["Email", "Referral Code", "Referred By", "Referral Count", "Signed Up At", "ID"])
     
     for entry in entries:
         created_at = entry.get('created_at', '')
         if isinstance(created_at, datetime):
             created_at = created_at.isoformat()
-        writer.writerow([entry.get('email', ''), created_at, entry.get('id', '')])
+        writer.writerow([
+            entry.get('email', ''),
+            entry.get('referral_code', ''),
+            entry.get('referred_by', ''),
+            entry.get('referral_count', 0),
+            created_at,
+            entry.get('id', '')
+        ])
     
     output.seek(0)
     
@@ -231,7 +399,7 @@ async def export_waitlist():
 
 
 @api_router.delete("/admin/waitlist/{entry_id}")
-async def delete_waitlist_entry(entry_id: str):
+async def delete_waitlist_entry(entry_id: str, admin: str = Depends(verify_admin)):
     result = await db.waitlist.delete_one({"id": entry_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -248,13 +416,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
