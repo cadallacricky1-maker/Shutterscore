@@ -1,6 +1,7 @@
 import requests
 import sys
 import json
+import base64
 from datetime import datetime
 
 class ShutterscoreAPITester:
@@ -10,6 +11,7 @@ class ShutterscoreAPITester:
         self.tests_run = 0
         self.tests_passed = 0
         self.test_results = []
+        self.admin_auth_header = None
 
     def run_test(self, name, method, endpoint, expected_status, data=None, expected_response_keys=None):
         """Run a single API test"""
