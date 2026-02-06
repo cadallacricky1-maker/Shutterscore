@@ -167,9 +167,31 @@ export default function LandingPage() {
   const [totalWaitlist, setTotalWaitlist] = useState(null);
   const featuresRef = useRef(null);
   const [searchParams] = useSearchParams();
+  
+  // Social proof stats
+  const [socialStats, setSocialStats] = useState({ total_signups: 0, recent_signups: 0 });
+  
+  // Position lookup
+  const [lookupEmail, setLookupEmail] = useState("");
+  const [lookupResult, setLookupResult] = useState(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [showLookup, setShowLookup] = useState(false);
 
   // Get referral code from URL
   const refCode = searchParams.get("ref");
+
+  // Fetch social proof stats
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await axios.get(`${API}/stats/social-proof`);
+        setSocialStats(response.data);
+      } catch (error) {
+        console.error("Failed to fetch social proof stats");
+      }
+    };
+    fetchStats();
+  }, []);
 
   // Show referral badge if came from referral link
   useEffect(() => {
