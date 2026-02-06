@@ -355,6 +355,3 @@ export default function ContestDetail() {
     </main>
   );
 }
-
-// Missing icon import
-import { Target } from "lucide-react";
