@@ -268,6 +268,33 @@ export default function LandingPage() {
     }
   };
 
+  // Position lookup handler
+  const handlePositionLookup = async (e) => {
+    e.preventDefault();
+    const trimmedEmail = lookupEmail.trim();
+    
+    if (!trimmedEmail) {
+      toast.error("Please enter your email");
+      return;
+    }
+    
+    setIsLookingUp(true);
+    try {
+      const response = await axios.get(`${API}/waitlist/position/${encodeURIComponent(trimmedEmail)}`);
+      setLookupResult(response.data);
+      toast.success(`Found! You're #${response.data.position}`);
+    } catch (error) {
+      if (error.response?.status === 404) {
+        toast.error("Email not found on the waitlist");
+      } else {
+        toast.error("Something went wrong. Please try again.");
+      }
+      setLookupResult(null);
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#050505] text-white">
       {/* Hero Section */}
