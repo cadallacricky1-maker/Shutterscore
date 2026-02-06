@@ -534,29 +534,114 @@ export default function LandingPage() {
                 </a>
               </div>
             ) : (
-              <form
-                onSubmit={handleWaitlistSubmit}
-                className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto"
-                data-testid="waitlist-form"
-              >
-                <Input
-                  type="email"
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="waitlist-input px-6 py-6 text-base flex-1"
-                  data-testid="waitlist-email-input"
-                />
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="btn-primary px-8 py-6 text-base animate-pulse-glow"
-                  data-testid="waitlist-submit-btn"
+              <>
+                <form
+                  onSubmit={handleWaitlistSubmit}
+                  className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto"
+                  data-testid="waitlist-form"
                 >
-                  {isSubmitting ? "Joining..." : "Join Waitlist"}
-                  <ArrowRight className="ml-2 w-4 h-4" />
-                </Button>
-              </form>
+                  <Input
+                    type="email"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="waitlist-input px-6 py-6 text-base flex-1"
+                    data-testid="waitlist-email-input"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="btn-primary px-8 py-6 text-base animate-pulse-glow"
+                    data-testid="waitlist-submit-btn"
+                  >
+                    {isSubmitting ? "Joining..." : "Join Waitlist"}
+                    <ArrowRight className="ml-2 w-4 h-4" />
+                  </Button>
+                </form>
+                
+                {/* Position Lookup Toggle */}
+                <div className="mt-8">
+                  <button
+                    onClick={() => setShowLookup(!showLookup)}
+                    className="text-gray-400 hover:text-purple-400 transition-colors text-sm flex items-center gap-2 mx-auto"
+                    data-testid="lookup-toggle"
+                  >
+                    <Search className="w-4 h-4" />
+                    Already on the waitlist? Check your position
+                  </button>
+                  
+                  <AnimatePresence>
+                    {showLookup && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-4 overflow-hidden"
+                      >
+                        <form
+                          onSubmit={handlePositionLookup}
+                          className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto"
+                          data-testid="lookup-form"
+                        >
+                          <Input
+                            type="email"
+                            placeholder="Enter your email to check position"
+                            value={lookupEmail}
+                            onChange={(e) => setLookupEmail(e.target.value)}
+                            className="waitlist-input px-6 py-4 text-base flex-1"
+                            data-testid="lookup-email-input"
+                          />
+                          <Button
+                            type="submit"
+                            disabled={isLookingUp}
+                            variant="outline"
+                            className="btn-secondary px-6 py-4"
+                            data-testid="lookup-submit-btn"
+                          >
+                            {isLookingUp ? "Checking..." : "Check"}
+                          </Button>
+                        </form>
+                        
+                        {/* Lookup Result */}
+                        {lookupResult && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-4 p-4 rounded-xl glass max-w-md mx-auto"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-gray-400 text-sm">{lookupResult.email}</p>
+                                <p className="text-2xl font-bold text-white">
+                                  Position #{lookupResult.position}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-gray-400 text-sm">Referrals</p>
+                                <p className="text-xl font-bold text-emerald-400">
+                                  {lookupResult.referral_count}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+                              <span className="text-gray-500 text-sm">
+                                out of {lookupResult.total_waitlist} people
+                              </span>
+                              <a 
+                                href="/leaderboard" 
+                                className="text-purple-400 hover:text-purple-300 text-sm flex items-center gap-1"
+                              >
+                                <Trophy className="w-3 h-3" />
+                                View Leaderboard
+                              </a>
+                            </div>
+                          </motion.div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </>
             )}
           </AnimatedSection>
         </div>
