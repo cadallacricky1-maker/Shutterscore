@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { motion, useInView } from "framer-motion";
+import { motion, useInView, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
 import { useSearchParams } from "react-router-dom";
@@ -15,6 +15,9 @@ import {
   Sparkles,
   ChevronDown,
   Share2,
+  Users,
+  Search,
+  Trophy,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
