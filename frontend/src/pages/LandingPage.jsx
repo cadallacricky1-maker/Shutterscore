@@ -319,10 +319,22 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: [0.25, 0.46, 0.45, 0.94] }}
           >
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-8">
-              <Sparkles className="w-4 h-4 text-purple-400" />
-              <span className="text-sm text-gray-300">Early Access Now Open</span>
+            {/* Social Proof Badge */}
+            <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full glass mb-8">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-emerald-400" />
+                <span className="text-sm text-gray-300" data-testid="social-proof-counter">
+                  Join {socialStats.total_signups.toLocaleString()}+ photographers
+                </span>
+              </div>
+              {socialStats.recent_signups > 0 && (
+                <>
+                  <span className="text-gray-600">•</span>
+                  <span className="text-sm text-emerald-400">
+                    +{socialStats.recent_signups} today
+                  </span>
+                </>
+              )}
             </div>
 
             {/* Title */}
