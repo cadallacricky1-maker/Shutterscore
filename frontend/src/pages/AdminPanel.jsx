@@ -19,7 +19,7 @@ import {
   Eye,
   EyeOff,
   UserPlus,
-  Share2,
+  Mail,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
