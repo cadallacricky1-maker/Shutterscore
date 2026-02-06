@@ -624,6 +624,100 @@ class ShutterscoreAPITester:
         
         return success
 
+    # NEW SOCIAL PROOF TESTS
+    def test_social_proof_stats(self):
+        """Test social proof stats endpoint for hero counter"""
+        success, response = self.run_test(
+            "Social Proof Stats",
+            "GET",
+            "stats/social-proof",
+            200,
+            expected_response_keys=["total_signups", "recent_signups", "total_referrals", "top_referrer_count"]
+        )
+        
+        if success:
+            total_signups = response.get('total_signups', 0)
+            recent_signups = response.get('recent_signups', 0)
+            total_referrals = response.get('total_referrals', 0)
+            top_referrer_count = response.get('top_referrer_count', 0)
+            
+            print(f"   Total signups: {total_signups}")
+            print(f"   Recent signups (24h): {recent_signups}")
+            print(f"   Total referrals: {total_referrals}")
+            print(f"   Top referrer count: {top_referrer_count}")
+            
+            # Validate data types and ranges
+            if isinstance(total_signups, int) and total_signups >= 0:
+                print("   ✓ Total signups is valid integer")
+            else:
+                print("   ⚠️  Total signups invalid")
+                success = False
+                
+            if isinstance(recent_signups, int) and recent_signups >= 0:
+                print("   ✓ Recent signups is valid integer")
+            else:
+                print("   ⚠️  Recent signups invalid")
+                success = False
+                
+            # Recent signups should not exceed total signups
+            if recent_signups <= total_signups:
+                print("   ✓ Recent signups <= total signups")
+            else:
+                print("   ⚠️  Recent signups > total signups (invalid)")
+                success = False
+        
+        return success
+
+    # NEW WEEKLY DIGEST TESTS
+    def test_weekly_digest_send(self):
+        """Test weekly digest send endpoint"""
+        success, response = self.run_test(
+            "Send Weekly Digest",
+            "POST",
+            "admin/send-weekly-digest",
+            200,
+            auth_required=True,
+            expected_response_keys=["success", "emails_sent", "message"]
+        )
+        
+        if success:
+            emails_sent = response.get('emails_sent', 0)
+            message = response.get('message', '')
+            
+            print(f"   Emails sent: {emails_sent}")
+            print(f"   Message: {message}")
+            
+            # Validate response
+            if isinstance(emails_sent, int) and emails_sent >= 0:
+                print("   ✓ Emails sent count is valid")
+            else:
+                print("   ⚠️  Invalid emails sent count")
+                success = False
+                
+            if message and "digest sent" in message.lower():
+                print("   ✓ Success message contains expected text")
+            else:
+                print("   ⚠️  Success message format unexpected")
+        
+        return success
+
+    def test_weekly_digest_no_auth(self):
+        """Test weekly digest without authentication"""
+        # Temporarily remove auth header
+        temp_auth = self.admin_auth_header
+        self.admin_auth_header = None
+        
+        success = self.run_test(
+            "Weekly Digest - No Auth",
+            "POST",
+            "admin/send-weekly-digest",
+            401
+        )
+        
+        # Restore auth header
+        self.admin_auth_header = temp_auth
+        return success
+
 def main():
     print("🚀 Starting Shutterscore API Tests...")
     print("=" * 50)
