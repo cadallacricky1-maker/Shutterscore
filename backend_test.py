@@ -487,14 +487,25 @@ def main():
     print("\n📡 Testing API Connectivity...")
     tester.test_root_endpoint()
     
+    print("\n🔐 Testing Admin Authentication...")
+    tester.test_admin_login_correct_password()
+    tester.test_admin_login_wrong_password()
+    tester.test_admin_verify_session()
+    tester.test_admin_verify_without_auth()
+    
     print("\n📧 Testing Waitlist Functionality...")
     tester.test_waitlist_valid_email()
     tester.test_waitlist_duplicate_email()
     tester.test_waitlist_invalid_email()
     tester.test_waitlist_count()
     
+    print("\n🔗 Testing Referral System...")
+    tester.test_waitlist_with_referral()
+    tester.test_referral_count_increment()
+    
     print("\n🔧 Testing Admin Panel Functionality...")
     tester.test_admin_waitlist_stats()
+    tester.test_admin_waitlist_stats_no_auth()
     tester.test_admin_waitlist_entries()
     tester.test_admin_search_entries()
     tester.test_admin_export_csv()
