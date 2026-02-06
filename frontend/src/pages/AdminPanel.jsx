@@ -290,6 +290,22 @@ export default function AdminPanel() {
     setIsAuthenticated(false);
   };
 
+  const handleSendWeeklyDigest = async () => {
+    if (!window.confirm("Send weekly digest emails to all waitlist members?")) {
+      return;
+    }
+    
+    try {
+      toast.info("Sending weekly digest emails...");
+      const response = await axios.post(`${API}/admin/send-weekly-digest`, {}, {
+        headers: getAuthHeader()
+      });
+      toast.success(response.data.message);
+    } catch (error) {
+      toast.error("Failed to send weekly digest");
+    }
+  };
+
   const formatDate = (dateStr) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString("en-US", {
