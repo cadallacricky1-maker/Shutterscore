@@ -13,14 +13,20 @@ class ShutterscoreAPITester:
         self.test_results = []
         self.admin_auth_header = None
 
-    def run_test(self, name, method, endpoint, expected_status, data=None, expected_response_keys=None):
+    def run_test(self, name, method, endpoint, expected_status, data=None, expected_response_keys=None, auth_required=False):
         """Run a single API test"""
         url = f"{self.api_url}/{endpoint}"
         headers = {'Content-Type': 'application/json'}
+        
+        # Add auth header if required
+        if auth_required and self.admin_auth_header:
+            headers.update(self.admin_auth_header)
 
         self.tests_run += 1
         print(f"\n🔍 Testing {name}...")
         print(f"   URL: {url}")
+        if auth_required:
+            print(f"   Auth: {'Yes' if self.admin_auth_header else 'No'}")
         
         try:
             if method == 'GET':
