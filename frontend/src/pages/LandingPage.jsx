@@ -160,6 +160,8 @@ export default function LandingPage() {
   const [hasJoinedWaitlist, setHasJoinedWaitlist] = useState(false);
   const [referralLink, setReferralLink] = useState("");
   const [referralCode, setReferralCode] = useState("");
+  const [position, setPosition] = useState(null);
+  const [totalWaitlist, setTotalWaitlist] = useState(null);
   const featuresRef = useRef(null);
   const [searchParams] = useSearchParams();
 
@@ -217,6 +219,14 @@ export default function LandingPage() {
         }
         if (response.data.entry?.referral_code) {
           setReferralCode(response.data.entry.referral_code);
+        }
+        
+        // Store position info
+        if (response.data.position) {
+          setPosition(response.data.position);
+        }
+        if (response.data.total_waitlist) {
+          setTotalWaitlist(response.data.total_waitlist);
         }
         
         // Show share modal after successful signup
