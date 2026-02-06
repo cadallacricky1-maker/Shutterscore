@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, useInView } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
+import { useSearchParams } from "react-router-dom";
 import {
   CreditCard,
   Scale,
