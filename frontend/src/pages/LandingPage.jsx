@@ -330,7 +330,7 @@ export default function LandingPage() {
               {socialStats.recent_signups > 0 && (
                 <>
                   <span className="text-gray-600">•</span>
-                  <span className="text-sm text-emerald-400">
+                  <span className="text-sm text-emerald-400" data-testid="recent-signups">
                     +{socialStats.recent_signups} today
                   </span>
                 </>
