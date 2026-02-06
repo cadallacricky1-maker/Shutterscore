@@ -1244,6 +1244,11 @@ def main():
     # Setup
     tester = ShutterscoreAPITester()
     
+    # Initialize test data storage
+    tester.test_contest_id = None
+    tester.test_photo_id = None
+    tester.test_judge_email = None
+    
     # Run all tests
     print("\n📡 Testing API Connectivity...")
     tester.test_root_endpoint()
@@ -1285,6 +1290,32 @@ def main():
     print("\n📧 Testing Weekly Digest Features...")
     tester.test_weekly_digest_send()
     tester.test_weekly_digest_no_auth()
+    
+    print("\n🏆 Testing Contest Management...")
+    tester.test_create_contest()
+    tester.test_create_contest_no_auth()
+    tester.test_list_contests()
+    tester.test_list_contests_by_status()
+    tester.test_get_contest_detail()
+    tester.test_update_contest_status()
+    tester.test_update_contest_status_invalid()
+    
+    print("\n📸 Testing Photo Submission...")
+    tester.test_submit_photo()
+    tester.test_submit_photo_invalid_contest()
+    tester.test_list_photos()
+    tester.test_list_photos_by_contest()
+    tester.test_get_photo_detail()
+    
+    print("\n⚖️ Testing Judging System...")
+    tester.test_ai_score_generation()
+    tester.test_submit_manual_score()
+    tester.test_submit_duplicate_score()
+    tester.test_get_pending_photos()
+    tester.test_get_pending_photos_filtered()
+    tester.test_get_judge_stats()
+    tester.test_get_judge_stats_with_email()
+    tester.test_get_contest_leaderboard()
     
     # Print final results
     print("\n" + "=" * 50)
