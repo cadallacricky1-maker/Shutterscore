@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Users,
   TrendingUp,
@@ -15,6 +15,11 @@ import {
   Camera,
   ArrowLeft,
   RefreshCw,
+  Lock,
+  Eye,
+  EyeOff,
+  UserPlus,
+  Share2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -60,22 +65,150 @@ const StatCard = ({ icon: Icon, label, value, color }) => (
   </motion.div>
 );
 
+// Login Component
+const AdminLogin = ({ onLogin }) => {
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!password.trim()) {
+      toast.error("Please enter the admin password");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await axios.post(`${API}/admin/login`, { password });
+      if (response.data.success) {
+        // Store credentials for basic auth
+        sessionStorage.setItem("adminAuth", btoa(`admin:${password}`));
+        toast.success("Login successful!");
+        onLogin();
+      }
+    } catch (error) {
+      toast.error("Invalid password");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-[#050505] text-white flex items-center justify-center p-6">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md"
+      >
+        <div className="glass rounded-2xl p-8">
+          <div className="flex items-center justify-center gap-3 mb-8">
+            <div className="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center">
+              <Lock className="w-6 h-6 text-purple-400" />
+            </div>
+          </div>
+          
+          <h1
+            className="text-3xl font-bold text-center mb-2"
+            style={{ fontFamily: "'Cormorant Garamond', serif" }}
+            data-testid="login-title"
+          >
+            Admin Access
+          </h1>
+          <p className="text-gray-400 text-center mb-8">
+            Enter the admin password to continue
+          </p>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                placeholder="Enter admin password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="bg-white/5 border-white/10 text-white placeholder:text-gray-500 pr-12"
+                data-testid="admin-password-input"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-purple-600 hover:bg-purple-700 py-6"
+              data-testid="admin-login-btn"
+            >
+              {isLoading ? "Authenticating..." : "Login to Admin Panel"}
+            </Button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <Link to="/" className="text-gray-400 hover:text-purple-400 transition-colors text-sm">
+              ← Back to Shutterscore
+            </Link>
+          </div>
+        </div>
+      </motion.div>
+    </main>
+  );
+};
+
 export default function AdminPanel() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [entries, setEntries] = useState([]);
-  const [stats, setStats] = useState({ total_signups: 0, today_signups: 0, this_week_signups: 0 });
+  const [stats, setStats] = useState({ total_signups: 0, today_signups: 0, this_week_signups: 0, total_referrals: 0 });
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [deleteId, setDeleteId] = useState(null);
+  const navigate = useNavigate();
+
+  // Get auth header
+  const getAuthHeader = () => {
+    const auth = sessionStorage.getItem("adminAuth");
+    return auth ? { Authorization: `Basic ${auth}` } : {};
+  };
+
+  // Verify session on mount
+  useEffect(() => {
+    const verifySession = async () => {
+      const auth = sessionStorage.getItem("adminAuth");
+      if (!auth) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        await axios.get(`${API}/admin/verify`, {
+          headers: { Authorization: `Basic ${auth}` }
+        });
+        setIsAuthenticated(true);
+      } catch (error) {
+        sessionStorage.removeItem("adminAuth");
+      }
+      setIsLoading(false);
+    };
+
+    verifySession();
+  }, []);
 
   const fetchStats = async () => {
     try {
-      const response = await axios.get(`${API}/admin/waitlist/stats`);
+      const response = await axios.get(`${API}/admin/waitlist/stats`, {
+        headers: getAuthHeader()
+      });
       setStats(response.data);
     } catch (error) {
-      console.error("Failed to fetch stats:", error);
+      if (error.response?.status === 401) {
+        handleLogout();
+      }
     }
   };
 
@@ -85,34 +218,45 @@ export default function AdminPanel() {
       const params = new URLSearchParams({ page, page_size: 10 });
       if (search) params.append("search", search);
       
-      const response = await axios.get(`${API}/admin/waitlist?${params}`);
+      const response = await axios.get(`${API}/admin/waitlist?${params}`, {
+        headers: getAuthHeader()
+      });
       setEntries(response.data.entries);
       setTotalPages(response.data.total_pages);
       setTotal(response.data.total);
     } catch (error) {
-      toast.error("Failed to fetch waitlist entries");
+      if (error.response?.status === 401) {
+        handleLogout();
+      } else {
+        toast.error("Failed to fetch waitlist entries");
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStats();
-    fetchEntries();
-  }, [page]);
+    if (isAuthenticated) {
+      fetchStats();
+      fetchEntries();
+    }
+  }, [page, isAuthenticated]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setPage(1);
-      fetchEntries();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search]);
+    if (isAuthenticated) {
+      const timer = setTimeout(() => {
+        setPage(1);
+        fetchEntries();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [search, isAuthenticated]);
 
   const handleExport = async () => {
     try {
       const response = await axios.get(`${API}/admin/waitlist/export`, {
         responseType: "blob",
+        headers: getAuthHeader()
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement("a");
@@ -129,7 +273,9 @@ export default function AdminPanel() {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`${API}/admin/waitlist/${id}`);
+      await axios.delete(`${API}/admin/waitlist/${id}`, {
+        headers: getAuthHeader()
+      });
       toast.success("Entry deleted successfully");
       fetchStats();
       fetchEntries();
@@ -137,6 +283,11 @@ export default function AdminPanel() {
       toast.error("Failed to delete entry");
     }
     setDeleteId(null);
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("adminAuth");
+    setIsAuthenticated(false);
   };
 
   const formatDate = (dateStr) => {
@@ -149,6 +300,20 @@ export default function AdminPanel() {
       minute: "2-digit",
     });
   };
+
+  // Show login if not authenticated
+  if (!isAuthenticated && !isLoading) {
+    return <AdminLogin onLogin={() => setIsAuthenticated(true)} />;
+  }
+
+  // Show loading
+  if (isLoading && !isAuthenticated) {
+    return (
+      <main className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
+        <div className="text-gray-400">Loading...</div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#050505] text-white p-6 md:p-12">
@@ -191,11 +356,20 @@ export default function AdminPanel() {
               <Download className="w-4 h-4 mr-2" />
               Export CSV
             </Button>
+            <Button
+              onClick={handleLogout}
+              variant="outline"
+              className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+              data-testid="logout-btn"
+            >
+              <Lock className="w-4 h-4 mr-2" />
+              Logout
+            </Button>
           </div>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
           <StatCard
             icon={Users}
             label="Total Signups"
@@ -212,6 +386,12 @@ export default function AdminPanel() {
             icon={TrendingUp}
             label="This Week"
             value={stats.this_week_signups}
+            color="bg-blue-500/20 text-blue-400"
+          />
+          <StatCard
+            icon={UserPlus}
+            label="Total Referrals"
+            value={stats.total_referrals}
             color="bg-amber-500/20 text-amber-400"
           />
         </div>
@@ -250,6 +430,9 @@ export default function AdminPanel() {
                   <TableHeader>
                     <TableRow className="border-white/10">
                       <TableHead className="text-gray-400">Email</TableHead>
+                      <TableHead className="text-gray-400">Referral Code</TableHead>
+                      <TableHead className="text-gray-400">Referred By</TableHead>
+                      <TableHead className="text-gray-400">Referrals</TableHead>
                       <TableHead className="text-gray-400">Signed Up</TableHead>
                       <TableHead className="text-gray-400 text-right">Actions</TableHead>
                     </TableRow>
@@ -259,6 +442,21 @@ export default function AdminPanel() {
                       <TableRow key={entry.id} className="border-white/10">
                         <TableCell className="text-white font-medium" data-testid={`email-${entry.id}`}>
                           {entry.email}
+                        </TableCell>
+                        <TableCell className="text-purple-400 font-mono text-sm">
+                          {entry.referral_code}
+                        </TableCell>
+                        <TableCell className="text-gray-400">
+                          {entry.referred_by || "-"}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`px-2 py-1 rounded-full text-xs ${
+                            entry.referral_count > 0 
+                              ? "bg-emerald-500/20 text-emerald-400" 
+                              : "bg-gray-500/20 text-gray-400"
+                          }`}>
+                            {entry.referral_count}
+                          </span>
                         </TableCell>
                         <TableCell className="text-gray-400">
                           {formatDate(entry.created_at)}
