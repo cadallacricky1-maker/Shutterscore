@@ -3,6 +3,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import AdminPanel from "./pages/AdminPanel";
 import Leaderboard from "./pages/Leaderboard";
+import JudgeDashboard from "./pages/JudgeDashboard";
+import JudgePhoto from "./pages/JudgePhoto";
+import Contests from "./pages/Contests";
+import ContestDetail from "./pages/ContestDetail";
 import { Toaster } from "./components/ui/sonner";
 
 function App() {
@@ -13,6 +17,10 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/admin" element={<AdminPanel />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/contests" element={<Contests />} />
+          <Route path="/contests/:contestId" element={<ContestDetail />} />
+          <Route path="/judge" element={<JudgeDashboard />} />
+          <Route path="/judge/:photoId" element={<JudgePhoto />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-center" richColors />
