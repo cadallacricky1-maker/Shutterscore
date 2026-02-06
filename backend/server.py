@@ -913,6 +913,472 @@ async def trigger_weekly_digest(admin: str = Depends(verify_admin)):
     )
 
 
+# ============================================
+# JUDGING SYSTEM
+# ============================================
+
+from emergentintegrations.llm.chat import LlmChat, UserMessage
+import httpx
+import base64
+
+EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
+
+# Scoring weights
+SCORING_WEIGHTS = {
+    "creativity": 3.0,      # 30 points max
+    "composition": 2.5,     # 25 points max
+    "theme_fit": 2.5,       # 25 points max
+    "impact": 2.0           # 20 points max
+}
+
+
+# Contest Models
+class Contest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    description: str
+    theme: str
+    prize_amount: float = 0
+    entry_fee: float = 0
+    start_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    end_date: datetime
+    status: str = "active"  # active, judging, completed
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ContestCreate(BaseModel):
+    title: str
+    description: str
+    theme: str
+    prize_amount: float = 0
+    entry_fee: float = 0
+    end_date: datetime
+
+
+# Photo Entry Models
+class PhotoEntry(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    contest_id: str
+    photographer_name: str
+    photographer_email: str
+    photo_url: str
+    title: str
+    description: Optional[str] = None
+    status: str = "pending"  # pending, judged
+    total_score: float = 0
+    judge_count: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PhotoEntryCreate(BaseModel):
+    contest_id: str
+    photographer_name: str
+    photographer_email: str
+    photo_url: str
+    title: str
+    description: Optional[str] = None
+
+
+# Score Models
+class ScoreBreakdown(BaseModel):
+    creativity: float = Field(ge=0, le=10)
+    composition: float = Field(ge=0, le=10)
+    theme_fit: float = Field(ge=0, le=10)
+    impact: float = Field(ge=0, le=10)
+
+
+class JudgeScore(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    photo_id: str
+    contest_id: str
+    judge_name: str
+    judge_email: str
+    scores: ScoreBreakdown
+    weighted_total: float
+    normalized_score: float  # Out of 40 for leaderboard
+    comments: str = ""
+    is_ai_generated: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class JudgeScoreCreate(BaseModel):
+    photo_id: str
+    judge_name: str
+    judge_email: str
+    scores: ScoreBreakdown
+    comments: str = ""
+    is_ai_generated: bool = False
+
+
+class AIScoreRequest(BaseModel):
+    photo_url: str
+    contest_theme: str
+
+
+class AIScoreResponse(BaseModel):
+    scores: ScoreBreakdown
+    comments: str
+    weighted_total: float
+    normalized_score: float
+
+
+# Helper function to calculate weighted score
+def calculate_weighted_score(scores: ScoreBreakdown) -> tuple:
+    """Calculate weighted total and normalized score"""
+    weighted = (
+        scores.creativity * SCORING_WEIGHTS["creativity"] +
+        scores.composition * SCORING_WEIGHTS["composition"] +
+        scores.theme_fit * SCORING_WEIGHTS["theme_fit"] +
+        scores.impact * SCORING_WEIGHTS["impact"]
+    )
+    # Normalize to 40 points for leaderboard compatibility
+    normalized = (weighted / 100) * 40
+    return round(weighted, 2), round(normalized, 2)
+
+
+# AI Judging function
+async def get_ai_scores(photo_url: str, theme: str) -> dict:
+    """Use GPT-4o to analyze photo and generate scores"""
+    try:
+        # Download image and convert to base64
+        async with httpx.AsyncClient() as client:
+            response = await client.get(photo_url, timeout=30)
+            if response.status_code != 200:
+                raise Exception(f"Failed to fetch image: {response.status_code}")
+            
+            image_base64 = base64.b64encode(response.content).decode('utf-8')
+            
+            # Determine mime type
+            content_type = response.headers.get('content-type', 'image/jpeg')
+            if 'png' in content_type:
+                mime_type = 'image/png'
+            elif 'webp' in content_type:
+                mime_type = 'image/webp'
+            else:
+                mime_type = 'image/jpeg'
+        
+        # Create chat instance
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"judge-{uuid.uuid4()}",
+            system_message="""You are an expert photography judge. Analyze photos and provide scores based on:
+1. Creativity & Originality (0-10): Unique perspective, innovative approach
+2. Technical Composition (0-10): Rule of thirds, leading lines, framing, focus
+3. Theme Relevance (0-10): How well it fits the contest theme
+4. Emotional Impact (0-10): Ability to evoke feelings, storytelling
+
+Respond ONLY with valid JSON in this exact format:
+{
+    "creativity": <number 0-10>,
+    "composition": <number 0-10>,
+    "theme_fit": <number 0-10>,
+    "impact": <number 0-10>,
+    "comments": "<detailed feedback string>"
+}"""
+        ).with_model("openai", "gpt-4o")
+        
+        # Create message with image
+        from emergentintegrations.llm.chat import ImageContent
+        image_content = ImageContent(image_base64=image_base64)
+        
+        user_message = UserMessage(
+            text=f"""Analyze this photo for a contest with the theme: "{theme}"
+            
+Score each criterion from 0-10 and provide detailed feedback. Be fair but constructive.""",
+            file_contents=[image_content]
+        )
+        
+        # Get response
+        response_text = await chat.send_message(user_message)
+        
+        # Parse JSON response
+        import json
+        # Clean response if needed
+        response_text = response_text.strip()
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        response_text = response_text.strip()
+        
+        result = json.loads(response_text)
+        
+        return {
+            "creativity": min(10, max(0, float(result.get("creativity", 5)))),
+            "composition": min(10, max(0, float(result.get("composition", 5)))),
+            "theme_fit": min(10, max(0, float(result.get("theme_fit", 5)))),
+            "impact": min(10, max(0, float(result.get("impact", 5)))),
+            "comments": result.get("comments", "AI analysis complete.")
+        }
+        
+    except Exception as e:
+        logger.error(f"AI scoring failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI scoring failed: {str(e)}")
+
+
+# Contest Routes
+@api_router.post("/contests", response_model=Contest)
+async def create_contest(input: ContestCreate, admin: str = Depends(verify_admin)):
+    """Create a new photo contest (admin only)"""
+    contest = Contest(**input.model_dump())
+    doc = contest.model_dump()
+    doc['start_date'] = doc['start_date'].isoformat()
+    doc['end_date'] = doc['end_date'].isoformat()
+    doc['created_at'] = doc['created_at'].isoformat()
+    
+    await db.contests.insert_one(doc)
+    return contest
+
+
+@api_router.get("/contests")
+async def list_contests(status: Optional[str] = None):
+    """List all contests"""
+    query = {}
+    if status:
+        query["status"] = status
+    
+    contests = await db.contests.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"contests": contests}
+
+
+@api_router.get("/contests/{contest_id}")
+async def get_contest(contest_id: str):
+    """Get a single contest"""
+    contest = await db.contests.find_one({"id": contest_id}, {"_id": 0})
+    if not contest:
+        raise HTTPException(status_code=404, detail="Contest not found")
+    
+    # Get photo count and judged count
+    photo_count = await db.photo_entries.count_documents({"contest_id": contest_id})
+    judged_count = await db.photo_entries.count_documents({"contest_id": contest_id, "status": "judged"})
+    
+    contest["photo_count"] = photo_count
+    contest["judged_count"] = judged_count
+    
+    return contest
+
+
+@api_router.patch("/contests/{contest_id}/status")
+async def update_contest_status(contest_id: str, status: str, admin: str = Depends(verify_admin)):
+    """Update contest status (admin only)"""
+    if status not in ["active", "judging", "completed"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    result = await db.contests.update_one(
+        {"id": contest_id},
+        {"$set": {"status": status}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Contest not found")
+    
+    return {"success": True, "message": f"Contest status updated to {status}"}
+
+
+# Photo Entry Routes
+@api_router.post("/photos", response_model=PhotoEntry)
+async def submit_photo(input: PhotoEntryCreate):
+    """Submit a photo entry to a contest"""
+    # Verify contest exists and is active
+    contest = await db.contests.find_one({"id": input.contest_id}, {"_id": 0})
+    if not contest:
+        raise HTTPException(status_code=404, detail="Contest not found")
+    if contest.get("status") != "active":
+        raise HTTPException(status_code=400, detail="Contest is not accepting entries")
+    
+    entry = PhotoEntry(**input.model_dump())
+    doc = entry.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    
+    await db.photo_entries.insert_one(doc)
+    return entry
+
+
+@api_router.get("/photos")
+async def list_photos(contest_id: Optional[str] = None, status: Optional[str] = None):
+    """List photo entries"""
+    query = {}
+    if contest_id:
+        query["contest_id"] = contest_id
+    if status:
+        query["status"] = status
+    
+    photos = await db.photo_entries.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return {"photos": photos}
+
+
+@api_router.get("/photos/{photo_id}")
+async def get_photo(photo_id: str):
+    """Get a single photo entry with scores"""
+    photo = await db.photo_entries.find_one({"id": photo_id}, {"_id": 0})
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    # Get all scores for this photo
+    scores = await db.judge_scores.find({"photo_id": photo_id}, {"_id": 0}).to_list(100)
+    photo["scores"] = scores
+    
+    # Get contest info
+    contest = await db.contests.find_one({"id": photo.get("contest_id")}, {"_id": 0})
+    photo["contest"] = contest
+    
+    return photo
+
+
+# Judging Routes
+@api_router.post("/judge/ai-score", response_model=AIScoreResponse)
+async def get_ai_score(request: AIScoreRequest):
+    """Get AI-generated scores for a photo"""
+    scores_dict = await get_ai_scores(request.photo_url, request.contest_theme)
+    
+    scores = ScoreBreakdown(
+        creativity=scores_dict["creativity"],
+        composition=scores_dict["composition"],
+        theme_fit=scores_dict["theme_fit"],
+        impact=scores_dict["impact"]
+    )
+    
+    weighted, normalized = calculate_weighted_score(scores)
+    
+    return AIScoreResponse(
+        scores=scores,
+        comments=scores_dict["comments"],
+        weighted_total=weighted,
+        normalized_score=normalized
+    )
+
+
+@api_router.post("/judge/submit", response_model=JudgeScore)
+async def submit_score(input: JudgeScoreCreate):
+    """Submit a judge's score for a photo"""
+    # Verify photo exists
+    photo = await db.photo_entries.find_one({"id": input.photo_id}, {"_id": 0})
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    # Check if this judge already scored this photo
+    existing = await db.judge_scores.find_one({
+        "photo_id": input.photo_id,
+        "judge_email": input.judge_email
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="You have already judged this photo")
+    
+    # Calculate weighted score
+    weighted, normalized = calculate_weighted_score(input.scores)
+    
+    score = JudgeScore(
+        photo_id=input.photo_id,
+        contest_id=photo.get("contest_id"),
+        judge_name=input.judge_name,
+        judge_email=input.judge_email,
+        scores=input.scores,
+        weighted_total=weighted,
+        normalized_score=normalized,
+        comments=input.comments,
+        is_ai_generated=input.is_ai_generated
+    )
+    
+    doc = score.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    doc['scores'] = doc['scores']
+    
+    await db.judge_scores.insert_one(doc)
+    
+    # Update photo's average score
+    all_scores = await db.judge_scores.find({"photo_id": input.photo_id}, {"_id": 0}).to_list(100)
+    total_weighted = sum(s.get("weighted_total", 0) for s in all_scores)
+    avg_score = total_weighted / len(all_scores) if all_scores else 0
+    
+    await db.photo_entries.update_one(
+        {"id": input.photo_id},
+        {
+            "$set": {
+                "total_score": round(avg_score, 2),
+                "judge_count": len(all_scores),
+                "status": "judged" if len(all_scores) >= 1 else "pending"
+            }
+        }
+    )
+    
+    return score
+
+
+@api_router.get("/judge/pending")
+async def get_pending_photos(contest_id: Optional[str] = None, judge_email: Optional[str] = None):
+    """Get photos pending judgment"""
+    query = {"status": "pending"}
+    if contest_id:
+        query["contest_id"] = contest_id
+    
+    photos = await db.photo_entries.find(query, {"_id": 0}).to_list(100)
+    
+    # If judge_email provided, filter out already judged
+    if judge_email:
+        judged_photo_ids = set()
+        scores = await db.judge_scores.find({"judge_email": judge_email}, {"photo_id": 1, "_id": 0}).to_list(1000)
+        judged_photo_ids = {s["photo_id"] for s in scores}
+        photos = [p for p in photos if p["id"] not in judged_photo_ids]
+    
+    # Enrich with contest info
+    for photo in photos:
+        contest = await db.contests.find_one({"id": photo.get("contest_id")}, {"_id": 0, "title": 1, "theme": 1})
+        photo["contest_title"] = contest.get("title") if contest else "Unknown"
+        photo["contest_theme"] = contest.get("theme") if contest else ""
+    
+    return {"photos": photos, "count": len(photos)}
+
+
+@api_router.get("/judge/stats")
+async def get_judge_stats(judge_email: Optional[str] = None):
+    """Get judging statistics"""
+    total_pending = await db.photo_entries.count_documents({"status": "pending"})
+    total_judged = await db.photo_entries.count_documents({"status": "judged"})
+    active_contests = await db.contests.count_documents({"status": {"$in": ["active", "judging"]}})
+    
+    stats = {
+        "total_pending": total_pending,
+        "total_judged": total_judged,
+        "active_contests": active_contests
+    }
+    
+    if judge_email:
+        my_judgments = await db.judge_scores.count_documents({"judge_email": judge_email})
+        stats["my_judgments"] = my_judgments
+        stats["my_points"] = my_judgments * 5  # 5 points per judgment
+    
+    return stats
+
+
+@api_router.get("/contests/{contest_id}/leaderboard")
+async def get_contest_leaderboard(contest_id: str):
+    """Get leaderboard for a contest"""
+    photos = await db.photo_entries.find(
+        {"contest_id": contest_id, "judge_count": {"$gt": 0}},
+        {"_id": 0}
+    ).sort("total_score", -1).to_list(100)
+    
+    leaderboard = []
+    for idx, photo in enumerate(photos):
+        leaderboard.append({
+            "rank": idx + 1,
+            "photo_id": photo["id"],
+            "title": photo["title"],
+            "photographer_name": photo["photographer_name"],
+            "photo_url": photo["photo_url"],
+            "total_score": photo["total_score"],
+            "judge_count": photo["judge_count"]
+        })
+    
+    return {"leaderboard": leaderboard}
+
+
 # Include the router in the main app
 app.include_router(api_router)
 
